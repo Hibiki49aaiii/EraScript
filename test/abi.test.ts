@@ -15,7 +15,7 @@ const transferAbi = parseAbi([
 ]);
 
 test("encodeCall and decodeCall round-trip standard EVM calldata", () => {
-  const to = "0x000000000000000000000000000000000000dEaD";
+  const to = "0x000000000000000000000000000000000000dead";
   const data = encodeCall(transferAbi, "transfer", [to, 123n]);
   assert.equal(selectorOf(data).length, 10);
   assert.equal(stripSelector(data).startsWith("0x"), true);
