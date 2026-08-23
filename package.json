@@ -1,11 +1,23 @@
 {
   "name": "erascript-lang",
-  "version": "0.1.0",
-  "description": "EraScript — a TypeScript-compatible language focused on safer, clearer application and Web3 code.",
+  "version": "0.2.0",
+  "description": "EraScript — an AI-first, Node.js/TypeScript-compatible language for safer Web3 automation.",
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": ">=20"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./web3": {
+      "types": "./dist/src/web3/index.d.ts",
+      "import": "./dist/src/web3/index.js"
+    }
   },
   "bin": {
     "erascript": "./dist/src/cli.js",
@@ -23,7 +35,8 @@
     "dev": "node --enable-source-maps dist/src/cli.js"
   },
   "dependencies": {
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "viem": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.3"

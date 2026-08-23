@@ -1,9 +1,12 @@
 import ts from "typescript";
+import type { EraDiagnostic } from "./diagnostics.js";
 import { transformEraScript } from "./transform.js";
+import { analyzeWeb3Literals } from "./web3/analyze.js";
 
 export interface CheckResult {
   typescript: string;
   diagnostics: readonly ts.Diagnostic[];
+  eraDiagnostics: readonly EraDiagnostic[];
   features: string[];
 }
 
@@ -35,5 +38,12 @@ export function typecheck(source: string, fileName = "module.era"): CheckResult 
 
   const program = ts.createProgram([virtualName], options, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  return { typescript: transformed.code, diagnostics, features: transformed.features };
+  const eraDiagnostics = analyzeWeb3Literals(transformed.code, virtualName);
+
+  return {
+    typescript: transformed.code,
+    diagnostics,
+    eraDiagnostics,
+    features: transformed.features,
+  };
 }

@@ -4,10 +4,16 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import process from "node:process";
-import { compile, formatDiagnostic } from "./compiler.js";
-import { typecheck } from "./typecheck.js";
+import { compile } from "./compiler.js";
+import {
+  diagnosticsJson,
+  formatEraDiagnostic,
+  typescriptDiagnosticToEra,
+  type EraDiagnostic,
+} from "./diagnostics.js";
+import { typecheck, type CheckResult } from "./typecheck.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 function usage(): never {
   console.log(`EraScript ${VERSION}
@@ -15,19 +21,13 @@ function usage(): never {
 Usage:
   era build <file.era> [-o output.js]
   era run <file.era> [-- <args...>]
-  era check <file.era>
+  era check <file.era> [--json]
   era transpile <file.era>
   era init [directory]
   era --version
 
-EraScript v0.1 additions:
-  fn        -> function
-  pub fn    -> export function
-  mut       -> let
-  -> Type   -> : Type (function return type)
-  Type?     -> Type | null | undefined (simple annotations)
-
-Ordinary TypeScript remains valid EraScript.`);
+EraScript is Node.js/TypeScript compatible and adds Web3-first safety checks.
+AI agents should prefer: era check <file.era> --json`);
   process.exit(0);
 }
 
@@ -44,9 +44,30 @@ function readSource(file: string): string {
   return readFileSync(file, "utf8");
 }
 
-function failDiagnostics(diags: readonly import("typescript").Diagnostic[]): never {
-  for (const d of diags) console.error(formatDiagnostic(d));
+function combinedDiagnostics(checked: CheckResult): EraDiagnostic[] {
+  return [
+    ...checked.diagnostics.map(typescriptDiagnosticToEra),
+    ...checked.eraDiagnostics,
+  ];
+}
+
+function failDiagnostics(diagnostics: readonly EraDiagnostic[], json = false, extra: Record<string, unknown> = {}): never {
+  if (json) {
+    console.log(diagnosticsJson(diagnostics, extra));
+  } else {
+    for (const diagnostic of diagnostics) console.error(formatEraDiagnostic(diagnostic));
+  }
   process.exit(1);
+}
+
+function ensureChecked(checked: CheckResult, json = false): void {
+  const diagnostics = combinedDiagnostics(checked);
+  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length) failDiagnostics(diagnostics, json, { features: checked.features });
+
+  if (!json) {
+    for (const diagnostic of diagnostics) console.error(formatEraDiagnostic(diagnostic));
+  }
 }
 
 function parseOutput(args: string[], input: string): string {
@@ -65,10 +86,13 @@ function parseOutput(args: string[], input: string): string {
 function build(file: string, args: string[]): void {
   const source = readSource(file);
   const checked = typecheck(source, file);
-  if (checked.diagnostics.length) failDiagnostics(checked.diagnostics);
+  ensureChecked(checked);
 
   const result = compile(source, { fileName: file, sourceMap: true });
-  if (result.diagnostics.length) failDiagnostics(result.diagnostics);
+  if (result.diagnostics.length) {
+    failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
+  }
+
   const output = parseOutput(args, file);
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, result.javascript, "utf8");
@@ -79,9 +103,12 @@ function build(file: string, args: string[]): void {
 function run(file: string, args: string[]): never {
   const source = readSource(file);
   const checked = typecheck(source, file);
-  if (checked.diagnostics.length) failDiagnostics(checked.diagnostics);
+  ensureChecked(checked);
+
   const result = compile(source, { fileName: file, sourceMap: false });
-  if (result.diagnostics.length) failDiagnostics(result.diagnostics);
+  if (result.diagnostics.length) {
+    failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
+  }
 
   const temp = mkdtempSync(join(tmpdir(), "erascript-"));
   const output = join(temp, "main.mjs");
@@ -119,15 +146,27 @@ switch (command) {
     break;
   case "check": {
     const file = requireFile(args[1]);
+    const json = args.slice(2).includes("--json");
     const checked = typecheck(readSource(file), file);
-    if (checked.diagnostics.length) failDiagnostics(checked.diagnostics);
+    const diagnostics = combinedDiagnostics(checked);
+    const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
+
+    if (json) {
+      console.log(diagnosticsJson(diagnostics, { features: checked.features }));
+      process.exit(hasErrors ? 1 : 0);
+    }
+
+    if (hasErrors) failDiagnostics(diagnostics);
+    for (const diagnostic of diagnostics) console.error(formatEraDiagnostic(diagnostic));
     console.log(`OK ${file}`);
     break;
   }
   case "transpile": {
     const file = requireFile(args[1]);
     const result = compile(readSource(file), { fileName: file, sourceMap: false });
-    if (result.diagnostics.length) failDiagnostics(result.diagnostics);
+    if (result.diagnostics.length) {
+      failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
+    }
     process.stdout.write(result.typescript);
     break;
   }

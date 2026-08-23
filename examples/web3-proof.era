@@ -1,0 +1,24 @@
+import type { AbiParameter } from "viem"
+import {
+  bytes32,
+  decodeArgumentsFromCalldata,
+  encodeArguments,
+  proof,
+} from "erascript-lang/web3"
+
+const parameters: readonly AbiParameter[] = [
+  { name: "proof", type: "bytes32[]" },
+]
+
+const nodeA = bytes32("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+const nodeB = bytes32("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+
+// Simulate captured calldata: 4-byte selector + ABI-encoded arguments.
+const encodedArguments = encodeArguments(parameters, [[nodeA, nodeB]])
+const capturedCalldata = `0x12345678${encodedArguments.slice(2)}`
+
+// EraScript removes exactly the function selector before ABI decoding.
+const decoded = decodeArgumentsFromCalldata(parameters, capturedCalldata)
+const checkedProof = proof(decoded[0] as readonly string[], "claim.proofs[0]")
+
+console.log(`validated ${checkedProof.length} proof nodes`)
