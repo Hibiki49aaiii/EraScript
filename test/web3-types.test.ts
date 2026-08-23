@@ -36,7 +36,7 @@ test("leftPadBytes32 requires explicit repair intent", () => {
 });
 
 test("addresses are validated and chain-branded", () => {
-  const raw = "0x000000000000000000000000000000000000dEaD";
+  const raw = "0x000000000000000000000000000000000000dead";
   const ethAddress = address(raw, Ethereum);
   const bnbAddress = address(raw, BNBChain);
   assert.equal(ethAddress, bnbAddress);
@@ -44,6 +44,13 @@ test("addresses are validated and chain-branded", () => {
   assert.throws(
     () => address("0x123", Ethereum),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3101",
+  );
+});
+
+test("invalid mixed-case checksums become structured Era diagnostics", () => {
+  assert.throws(
+    () => address("0x000000000000000000000000000000000000dEaD", Ethereum),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3102",
   );
 });
 
