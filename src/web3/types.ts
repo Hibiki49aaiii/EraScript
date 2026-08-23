@@ -54,7 +54,18 @@ export function address<C extends EvmChain>(value: string, chain: C, path?: stri
     );
   }
 
-  return getAddress(value) as Address<C>;
+  try {
+    return getAddress(value) as Address<C>;
+  } catch (error) {
+    invalidHex(
+      "ES3102",
+      "InvalidAddressChecksum",
+      "The address has valid length but an invalid mixed-case EVM checksum.",
+      path,
+      "Verify the source address or provide an all-lowercase address for canonical checksumming.",
+      { chain: chain.name, cause: error instanceof Error ? error.message : String(error) },
+    );
+  }
 }
 
 export function bytes32(value: string, path?: string): Bytes32 {
