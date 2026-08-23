@@ -29,7 +29,14 @@ function hexDigits(value: string): string {
   return value.startsWith("0x") ? value.slice(2) : value;
 }
 
-function invalidHex(code: string, kind: string, message: string, path?: string, suggestion?: string, details?: Record<string, unknown>): never {
+function invalidHex(
+  code: string,
+  kind: string,
+  message: string,
+  path?: string,
+  suggestion?: string,
+  details?: Record<string, unknown>,
+): never {
   throw new EraDiagnosticError({
     code,
     severity: "error",
@@ -76,16 +83,33 @@ export function bytes32(value: string, path?: string): Bytes32 {
       "InvalidBytes32",
       `Expected bytes32 (64 hexadecimal digits), received ${digits.length} digits.`,
       path,
-      digits.length === 63 ? "A leading zero may be missing. Do not silently pad proofs unless the source encoding is verified." : "Provide exactly 32 bytes as a 0x-prefixed hexadecimal value.",
+      digits.length === 63
+        ? "A leading zero may be missing. Do not silently pad proofs unless the source encoding is verified."
+        : "Provide exactly 32 bytes as a 0x-prefixed hexadecimal value.",
       { expectedBytes: 32, expectedHexDigits: 64, actualHexDigits: digits.length },
     );
   }
   return value as Bytes32;
 }
 
-export function hash<Algorithm extends string = "keccak256">(value: string, algorithm = "keccak256" as Algorithm, path?: string): Hash<Algorithm> {
+export function hash<Algorithm extends string = "keccak256">(
+  value: string,
+  algorithm = "keccak256" as Algorithm,
+  path?: string,
+): Hash<Algorithm> {
+  void algorithm;
   bytes32(value, path);
   return value as Hash<Algorithm>;
+}
+
+export function transactionHash<C extends EvmChain>(value: string, _chain: C, path?: string): TransactionHash<C> {
+  bytes32(value, path);
+  return value as TransactionHash<C>;
+}
+
+export function blockHash<C extends EvmChain>(value: string, _chain: C, path?: string): BlockHash<C> {
+  bytes32(value, path);
+  return value as BlockHash<C>;
 }
 
 export function merkleRoot(value: string, path?: string): MerkleRoot {
