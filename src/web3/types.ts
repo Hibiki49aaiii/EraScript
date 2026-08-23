@@ -115,7 +115,7 @@ export function calldata<Signature extends string = string>(value: string, path?
 
 export function proof(values: readonly string[], path = "proof"): MerkleProof {
   const checked = values.map((value, index) => bytes32(value, `${path}[${index}]`));
-  return checked as MerkleProof;
+  return checked as unknown as MerkleProof;
 }
 
 /** Explicit recovery helper. This is intentionally not used by bytes32/proof automatically. */
