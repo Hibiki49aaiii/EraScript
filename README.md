@@ -8,9 +8,11 @@ The goal is not to replace Node.js. EraScript compiles to ordinary JavaScript an
 
 ## Why EraScript
 
-Web3 scripts commonly represent addresses, hashes, proofs, calldata, token amounts, and chain IDs as ordinary strings/numbers. Small representation mistakes can become failed claims, broken rescue bundles, or asset loss.
+Web3 scripts commonly represent addresses, hashes, proofs, calldata, token amounts, chain IDs, nonces and execution state as ordinary strings/numbers. Small representation or sequencing mistakes can become failed claims, broken rescue bundles, or asset loss.
 
 EraScript moves these checks toward the compiler/tooling layer so AI-generated code can be rejected before execution.
+
+The research-driven normative Web3 design is maintained in [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md). It incorporates recurring TypeScript/Node.js patterns from viem, Flashbots, Safe, OpenZeppelin Merkle tooling, Permit2 and ERC-4337 tooling.
 
 ## v0.2 Web3 foundation
 
@@ -24,7 +26,7 @@ import {
 } from "erascript-lang/web3"
 
 const safe = address(
-  "0x000000000000000000000000000000000000dEaD",
+  "0x000000000000000000000000000000000000dead",
   Ethereum,
 )
 
@@ -37,7 +39,7 @@ const checkedProof = proof([node], "claim.proofs[0]")
 
 Current primitives:
 
-- `Address<Chain>` with EVM address validation
+- `Address<Chain>` with EVM address/checksum validation
 - built-in chain identities for Ethereum, BNB Chain, Base, and Arbitrum
 - strict `Bytes32`
 - branded `Hash`, `TransactionHash`, `BlockHash`, `MerkleRoot`, `MerkleLeaf`, `MerkleProof`
@@ -97,9 +99,14 @@ User intent
   -> AI generates .era
   -> era check --json
   -> AI repairs diagnostics
-  -> simulation / invariant verification
+  -> transaction preparation
+  -> simulation
+  -> workflow/invariant verification
   -> execution
+  -> receipt/replacement/finality verification
 ```
+
+A transaction hash is **not** considered success.
 
 ## Node.js / TypeScript compatibility
 
@@ -162,27 +169,41 @@ Web3 runtime helpers use `viem` rather than reimplementing EVM ABI primitives.
 - [x] static Web3 literal diagnostics
 - [x] `era check --json`
 
-### v0.3 — value and contract safety
-- `Wei`, `Gwei`, `Ether`
-- `TokenAmount<Token>` / decimals-aware exact quantities
-- ABI-derived contract method types
-- chain-aware transaction types
+### v0.3 — transaction correctness
+- `Wei`, `Ether`, `Gas`, `WeiPerGas`, EIP-1559 fee types
+- `Nonce<Chain>` with explicit `latest` / `pending` provenance
+- prepared transaction envelope and lifecycle types
+- mandatory simulation policy for writes
+- real-state vs state-override simulation trust
+- receipt/replacement/confirmation/finality model
+- strict event/log decoding
+- ABI custom-error decoding
+- EIP-712 domain/signature types
 
-### v0.4 — AI execution security
+### v0.4 — authorization and private execution
+- `TokenAmount<Token, Chain, Decimals>`
+- Permit / Permit2 typed authorizations
+- Merkle scheme profiles and proof verification
+- Flashbots bundle target-block binding and re-simulation
 - `Secret<PrivateKey>` and secret-flow analysis
 - signer capabilities / destination policies
-- unsafe-block audit trail
-- transaction DAGs
+- unsafe-boundary audit trail
 
-### v0.5 — rescue verification
-- sponsor -> claim -> asset rescue -> native sweep plans
-- Merkle root/proof verification policies
+### v0.5 — account and rescue verification
+- Safe proposal/signature/threshold/execution lifecycle
+- ERC-4337 UserOperation/bundler/paymaster types
+- EIP-7702 authorization lifecycle
+- sponsor -> claim -> asset rescue -> native sweep transaction DAGs
 - nonce/gas/dependency validation
 - final-state invariants
 - RPC/fork/bundle simulation gates
+- `era verify`
 - `READY` only when the configured verification policy passes
 
-See [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md) for the design principles.
+## Design documents
+
+- [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md) — normative research-driven Web3 specification
+- [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md) — AI-first safety principles
 
 ## Status
 
