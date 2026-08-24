@@ -8,30 +8,16 @@ function literalValue(node: ts.Expression | undefined): string | undefined {
 
 function location(sourceFile: ts.SourceFile, node: ts.Node): Pick<EraDiagnostic, "file" | "line" | "column"> {
   const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-  return {
-    file: sourceFile.fileName,
-    line: position.line + 1,
-    column: position.character + 1,
-  };
+  return { file: sourceFile.fileName, line: position.line + 1, column: position.character + 1 };
 }
 
 function callName(node: ts.CallExpression): string | undefined {
   return ts.isIdentifier(node.expression) ? node.expression.text : undefined;
 }
 
-function validateFixedHex(
-  sourceFile: ts.SourceFile,
-  node: ts.Node,
-  value: string,
-  expectedDigits: number,
-  code: string,
-  kind: string,
-  label: string,
-): EraDiagnostic | undefined {
+function validateFixedHex(sourceFile: ts.SourceFile, node: ts.Node, value: string, expectedDigits: number, code: string, kind: string, label: string): EraDiagnostic | undefined {
   const digits = value.startsWith("0x") ? value.slice(2) : value;
-  const valid = value.startsWith("0x") && /^[0-9a-fA-F]+$/.test(digits) && digits.length === expectedDigits;
-  if (valid) return undefined;
-
+  if (value.startsWith("0x") && /^[0-9a-fA-F]+$/.test(digits) && digits.length === expectedDigits) return undefined;
   return {
     code,
     severity: "error",
@@ -41,11 +27,25 @@ function validateFixedHex(
     suggestion: digits.length === expectedDigits - 1
       ? "A leading zero may be missing. Verify the source value before padding."
       : `Provide exactly ${expectedDigits} hexadecimal digits with a 0x prefix.`,
-    details: {
-      expectedHexDigits: expectedDigits,
-      actualHexDigits: digits.length,
-    },
+    details: { expectedHexDigits: expectedDigits, actualHexDigits: digits.length },
   };
+}
+
+function processEnvName(node: ts.Node): string | undefined {
+  if (ts.isPropertyAccessExpression(node)) {
+    const parent = node.expression;
+    if (ts.isPropertyAccessExpression(parent) && ts.isIdentifier(parent.expression) && parent.expression.text === "process" && parent.name.text === "env") return node.name.text;
+  }
+  if (ts.isElementAccessExpression(node)) {
+    const parent = node.expression;
+    const key = literalValue(node.argumentExpression);
+    if (key && ts.isPropertyAccessExpression(parent) && ts.isIdentifier(parent.expression) && parent.expression.text === "process" && parent.name.text === "env") return key;
+  }
+  return undefined;
+}
+
+function looksLikePrivateSecret(name: string): boolean {
+  return /(PRIVATE.*KEY|WALLET.*KEY|MNEMONIC|SEED(?:_PHRASE)?)/i.test(name);
 }
 
 export function analyzeWeb3Literals(source: string, fileName = "module.ts"): EraDiagnostic[] {
@@ -53,6 +53,18 @@ export function analyzeWeb3Literals(source: string, fileName = "module.ts"): Era
   const diagnostics: EraDiagnostic[] = [];
 
   const visit = (node: ts.Node): void => {
+    const envName = processEnvName(node);
+    if (envName && looksLikePrivateSecret(envName)) {
+      diagnostics.push({
+        code: "ES3820",
+        severity: "error",
+        kind: "DirectPrivateSecretAccess",
+        message: `Direct access to secret-like environment variable '${envName}' bypasses EraScript signer capabilities.`,
+        ...location(sourceFile, node),
+        suggestion: `Use privateKeyEnv("${envName}", chain) and sign through a SignerCapability instead of reading the raw value.`,
+      });
+    }
+
     if (ts.isCallExpression(node)) {
       const name = callName(node);
 
@@ -101,6 +113,20 @@ export function analyzeWeb3Literals(source: string, fileName = "module.ts"): Era
               diagnostic.path = `proof[${index}]`;
               diagnostics.push(diagnostic);
             }
+          });
+        }
+      }
+
+      if (name === "privateKeyToAccount") {
+        const value = literalValue(node.arguments[0]);
+        if (value && /^0x[0-9a-fA-F]{64}$/.test(value)) {
+          diagnostics.push({
+            code: "ES3821",
+            severity: "error",
+            kind: "HardcodedPrivateKey",
+            message: "A raw private key literal is embedded in source code.",
+            ...location(sourceFile, node.arguments[0]!),
+            suggestion: "Store the key outside source control and reference it through privateKeyEnv() plus a SignerCapability.",
           });
         }
       }
