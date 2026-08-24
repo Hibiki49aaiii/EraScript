@@ -5,7 +5,14 @@ import {
   type MultichainSigningRequest,
   type VerifiedMultichainSignature,
 } from "./external-signer.js";
-import type { SuiSimulationEvidence, SuiVerifiedPreparedTransaction } from "./sui-adapter.js";
+import {
+  executeSuiTransaction,
+  type SuiClientLike,
+  type SuiExecutedTransaction,
+  type SuiExecutionFailedTransaction,
+  type SuiSimulationEvidence,
+  type SuiVerifiedPreparedTransaction,
+} from "./sui-adapter.js";
 import type { SuiAddress } from "./sui.js";
 import type { SuiChainProfile } from "./types.js";
 
@@ -61,25 +68,14 @@ export function createSuiSponsoredSigningPlan(profile: SuiChainProfile, transact
 
 export function createSuiSponsoredSigningRequests(profile: SuiChainProfile, plan: SuiSponsoredSigningPlan, options: { ttlMs?: number; nowMs?: number } = {}): SuiSponsoredSigningRequests {
   if (plan.profileId !== profile.id) fail("ES4570", "SuiSponsorshipProfileMismatch", "Sui sponsored signing plan belongs to a different profile.", { planProfile: plan.profileId, profile: profile.id });
-  const requestOptions = {
-    ...(options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {}),
-    ...(options.nowMs !== undefined ? { nowMs: options.nowMs } : {}),
-  };
+  const requestOptions = { ...(options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {}), ...(options.nowMs !== undefined ? { nowMs: options.nowMs } : {}) };
   const senderRequest = createMultichainSigningRequest({
-    profile,
-    role: "sender",
-    signer: plan.sender,
-    payload: plan.payloadBase64,
-    payloadEncoding: "base64",
+    profile, role: "sender", signer: plan.sender, payload: plan.payloadBase64, payloadEncoding: "base64",
     context: { kind: "sui-sponsored-transaction", role: "sender", bindingHash: plan.transaction.bindingHash, payloadHash: plan.payloadHash, counterparty: plan.sponsor },
     ...requestOptions,
   });
   const sponsorRequest = createMultichainSigningRequest({
-    profile,
-    role: "sponsor",
-    signer: plan.sponsor,
-    payload: plan.payloadBase64,
-    payloadEncoding: "base64",
+    profile, role: "sponsor", signer: plan.sponsor, payload: plan.payloadBase64, payloadEncoding: "base64",
     context: { kind: "sui-sponsored-transaction", role: "sponsor", bindingHash: plan.transaction.bindingHash, payloadHash: plan.payloadHash, counterparty: plan.sender },
     ...requestOptions,
   });
@@ -101,8 +97,13 @@ export function bindSuiSponsoredSignatures(requests: SuiSponsoredSigningRequests
   return { kind: "sui-sponsored-signature-evidence", plan: requests.plan, senderSignature: input.senderSignature, sponsorSignature: input.sponsorSignature, exactPayloadMatch: true, evidenceHash };
 }
 
-export function assertSuiSponsoredSimulationMatches(evidence: SuiSponsoredSignatureEvidence, simulation: SuiSimulationEvidence): SuiSimulationEvidence {
+export function assertSuiSponsoredSimulationMatches(evidence: SuiSponsoredSignatureEvidence, simulation: SuiSimulationEvidence): SuiSimulationEvidence & { readonly success: true; readonly checksEnabled: true } {
   if (simulation.transaction.bindingHash !== evidence.plan.transaction.bindingHash || simulation.transaction.serializedBase64 !== evidence.plan.payloadBase64) fail("ES4575", "SuiSponsoredSimulationMismatch", "Simulation evidence does not belong to the exact Sui bytes authorized by sender and sponsor.");
   if (!simulation.success || !simulation.checksEnabled) fail("ES4576", "SuiSponsoredSimulationNotExecutionReady", "Sponsored Sui execution requires a successful checks-enabled simulation of the exact signed bytes.");
-  return simulation;
+  return simulation as SuiSimulationEvidence & { readonly success: true; readonly checksEnabled: true };
+}
+
+export async function executeSuiSponsoredTransaction(client: SuiClientLike, simulation: SuiSimulationEvidence, evidence: SuiSponsoredSignatureEvidence): Promise<SuiExecutedTransaction | SuiExecutionFailedTransaction> {
+  const checked = assertSuiSponsoredSimulationMatches(evidence, simulation);
+  return executeSuiTransaction(client, checked, [evidence.senderSignature.response.signature, evidence.sponsorSignature.response.signature]);
 }
