@@ -17,7 +17,7 @@ export interface Permit2WitnessSpenderTrust<C extends EvmChain = EvmChain> {
   readonly profile: "era-transfer-witness-v1";
 }
 
-export interface VerifiedPermit2WitnessSpender<C extends EvmChain = EvmChain> extends Permit2WitnessSpenderTrust<C> {
+export interface VerifiedPermit2WitnessSpender<C extends EvmChain = EvmChain> extends Omit<Permit2WitnessSpenderTrust<C>, "kind"> {
   readonly kind: "permit2-witness-spender-verified";
   readonly blockNumber: bigint;
   readonly blockHash: BlockHash<C>;
