@@ -1,12 +1,14 @@
 import ts from "typescript";
 import type { EraDiagnostic } from "./diagnostics.js";
 import { transformEraScript } from "./transform.js";
-import { analyzeWeb3Literals } from "./web3/analyze.js";
+import { analyzeWeb3Source } from "./web3/analyze.js";
+import type { UnsafeBoundaryAudit } from "./web3/unsafe.js";
 
 export interface CheckResult {
   typescript: string;
   diagnostics: readonly ts.Diagnostic[];
   eraDiagnostics: readonly EraDiagnostic[];
+  unsafeBoundaries: readonly UnsafeBoundaryAudit[];
   features: string[];
 }
 
@@ -38,12 +40,13 @@ export function typecheck(source: string, fileName = "module.era"): CheckResult 
 
   const program = ts.createProgram([virtualName], options, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  const eraDiagnostics = analyzeWeb3Literals(transformed.code, virtualName);
+  const analysis = analyzeWeb3Source(transformed.code, virtualName);
 
   return {
     typescript: transformed.code,
     diagnostics,
-    eraDiagnostics,
+    eraDiagnostics: analysis.diagnostics,
+    unsafeBoundaries: analysis.unsafeBoundaries,
     features: transformed.features,
   };
 }
