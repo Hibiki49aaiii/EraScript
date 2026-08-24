@@ -11,9 +11,11 @@ import {
   createSolanaSigningRequests,
   createSuiSponsoredSigningPlan,
   createSuiSponsoredSigningRequests,
+  executeSuiSponsoredTransaction,
   prepareSolanaSerializedTransaction,
   prepareSuiTransaction,
   signWithMultichainExternalSigner,
+  simulateSuiPreparedTransaction,
   solanaBlockhash,
   solanaRecentBlockhash,
   verifySolanaSerializedTransaction,
@@ -28,6 +30,7 @@ const SOL_SECOND_SIGNER = "So11111111111111111111111111111111111111112";
 const SOL_BLOCKHASH = "1".repeat(32);
 const SUI_SENDER = `0x${"11".repeat(32)}`;
 const SUI_SPONSOR = `0x${"22".repeat(32)}`;
+const SUI_DIGEST = "1".repeat(32);
 const TX_BASE64 = "AQ==";
 const SIGNED_TX_BASE64 = "Aw==";
 const MESSAGE_BASE64 = "Ag==";
@@ -125,6 +128,18 @@ test("Sui sponsorship requires sender and gas owner to authorize identical final
   assert.equal(evidence.exactPayloadMatch, true);
   assert.equal(evidence.plan.sender, SUI_SENDER);
   assert.equal(evidence.plan.sponsor, SUI_SPONSOR);
+
+  const client = {
+    network: "mainnet",
+    async simulateTransaction() { return { Transaction: { digest: SUI_DIGEST, status: { success: true }, balanceChanges: [], commandResults: [] } }; },
+    async executeTransaction(input: Record<string, unknown>) {
+      assert.deepEqual(input.signatures, [senderSignature.response.signature, sponsorSignature.response.signature]);
+      return { Transaction: { digest: SUI_DIGEST, status: { success: true }, checkpoint: 77n } };
+    },
+  };
+  const simulation = await simulateSuiPreparedTransaction(client, verified);
+  const executed = await executeSuiSponsoredTransaction(client, simulation, evidence);
+  assert.equal(executed.state, "sui-executed");
 
   assert.throws(
     () => bindSuiSponsoredSignatures(requests, { senderSignature, sponsorSignature: senderSignature }),
