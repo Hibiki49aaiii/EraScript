@@ -40,6 +40,15 @@ export interface SuiStateReader {
   readObject(objectId: SuiObjectId): Promise<SuiObjectState>;
 }
 
+export interface SuiStateSnapshot {
+  readonly kind: "sui-state-snapshot";
+  readonly source: string;
+  readonly capturedAtMs: number;
+  readonly balances: readonly SuiBalanceState[];
+  readonly objects: readonly SuiObjectState[];
+  readonly evidenceHash: string;
+}
+
 export interface SuiPostStateEvidence {
   readonly kind: "sui-post-state-evidence";
   readonly source: string;
@@ -48,6 +57,7 @@ export interface SuiPostStateEvidence {
   readonly capturedAtMs: number;
   readonly balances: readonly SuiBalanceState[];
   readonly objects: readonly SuiObjectState[];
+  readonly snapshotHash: string;
   readonly evidenceHash: string;
 }
 
@@ -80,6 +90,8 @@ export interface SuiStateInvariantEvidence {
   readonly kind: "sui-state-invariant-evidence";
   readonly transactionDigest: string;
   readonly checkpoint: bigint;
+  readonly beforeSnapshotHash?: string;
+  readonly afterSnapshotHash: string;
   readonly assertions: readonly SuiStateAssertion[];
   readonly passed: boolean;
   readonly evidenceHash: string;
@@ -191,6 +203,29 @@ export function createSuiCoreStateReader(client: SuiCoreStateClientLike, id = "@
   };
 }
 
+async function readSnapshot(input: {
+  reader: SuiStateReader;
+  balanceQueries?: readonly { readonly owner: SuiAddress; readonly coinType: string }[];
+  objectIds?: readonly SuiObjectId[];
+  capturedAtMs?: number;
+}): Promise<Omit<SuiStateSnapshot, "kind">> {
+  const balanceQueries = input.balanceQueries ?? [];
+  const objectIds = input.objectIds ?? [];
+  const balances = await Promise.all(balanceQueries.map((query) => input.reader.readBalance(query)));
+  const objects = await Promise.all(objectIds.map((objectId) => input.reader.readObject(objectId)));
+  const core = { source: input.reader.id, capturedAtMs: input.capturedAtMs ?? Date.now(), balances, objects };
+  return { ...core, evidenceHash: sha256(core) };
+}
+
+export async function captureSuiStateSnapshot(input: {
+  reader: SuiStateReader;
+  balanceQueries?: readonly { readonly owner: SuiAddress; readonly coinType: string }[];
+  objectIds?: readonly SuiObjectId[];
+  capturedAtMs?: number;
+}): Promise<SuiStateSnapshot> {
+  return { kind: "sui-state-snapshot", ...(await readSnapshot(input)) };
+}
+
 export async function captureSuiPostState(input: {
   reader: SuiStateReader;
   checkpoint: SuiCheckpointEvidence;
@@ -198,17 +233,15 @@ export async function captureSuiPostState(input: {
   objectIds?: readonly SuiObjectId[];
   capturedAtMs?: number;
 }): Promise<SuiPostStateEvidence> {
-  const balanceQueries = input.balanceQueries ?? [];
-  const objectIds = input.objectIds ?? [];
-  const balances = await Promise.all(balanceQueries.map((query) => input.reader.readBalance(query)));
-  const objects = await Promise.all(objectIds.map((objectId) => input.reader.readObject(objectId)));
+  const snapshot = await readSnapshot(input);
   const core = {
-    source: input.reader.id,
+    source: snapshot.source,
     transactionDigest: input.checkpoint.transaction.digest,
     checkpoint: input.checkpoint.checkpoint,
-    capturedAtMs: input.capturedAtMs ?? Date.now(),
-    balances,
-    objects,
+    capturedAtMs: snapshot.capturedAtMs,
+    balances: snapshot.balances,
+    objects: snapshot.objects,
+    snapshotHash: snapshot.evidenceHash,
   };
   return { kind: "sui-post-state-evidence", ...core, evidenceHash: sha256(core) };
 }
@@ -218,12 +251,11 @@ function balanceKey(owner: SuiAddress, coinType: string): string {
 }
 
 export function verifySuiStateInvariants(input: {
-  before?: SuiPostStateEvidence;
+  before?: SuiStateSnapshot;
   after: SuiPostStateEvidence;
   balanceExpectations?: readonly SuiBalanceExpectation[];
   objectExpectations?: readonly SuiObjectExpectation[];
 }): SuiStateInvariantEvidence {
-  if (input.before && input.before.transactionDigest !== input.after.transactionDigest) fail("ES4685", "SuiStateEvidenceTransactionMismatch", "Before/after Sui state evidence must be associated with the same transaction context.", { before: input.before.transactionDigest, after: input.after.transactionDigest });
   const beforeBalances = new Map((input.before?.balances ?? []).map((entry) => [balanceKey(entry.owner, entry.coinType), entry]));
   const afterBalances = new Map(input.after.balances.map((entry) => [balanceKey(entry.owner, entry.coinType), entry]));
   const afterObjects = new Map(input.after.objects.map((entry) => [entry.objectId, entry]));
@@ -273,6 +305,8 @@ export function verifySuiStateInvariants(input: {
   const core = {
     transactionDigest: input.after.transactionDigest,
     checkpoint: input.after.checkpoint,
+    ...(input.before ? { beforeSnapshotHash: input.before.evidenceHash } : {}),
+    afterSnapshotHash: input.after.snapshotHash,
     assertions,
     passed: assertions.every((assertion) => assertion.passed),
   };
