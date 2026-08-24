@@ -50,7 +50,7 @@ test("Permit2 witness spender is anchored to approved bytecode before signing", 
   const badClient = { ...client, async getCode() { return "0x6001" as const; } };
   await assert.rejects(
     () => verifyPermit2WitnessSpenderFromRpc(badClient, trust),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3934",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4094",
   );
 });
 
@@ -89,10 +89,10 @@ test("Permit2 witness transfer binds EraScript recipient and exact requested amo
 
   assert.throws(
     () => permit2WitnessTransferExecution(authorization, otherRecipient, requested),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3935",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4095",
   );
   assert.throws(
     () => permit2WitnessTransferExecution(authorization, recipient, tokenAmountRaw(token, 599n)),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3936",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4096",
   );
 });
