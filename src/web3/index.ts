@@ -17,6 +17,7 @@ export * from "./token.js";
 export * from "./tx.js";
 export * from "./typed-data.js";
 export * from "./types.js";
+export * from "./unsafe.js";
 export * from "./values.js";
 export * from "./verification-io.js";
 export * from "./verification.js";
