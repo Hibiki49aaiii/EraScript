@@ -1,6 +1,7 @@
 import { keccak256, stringToHex } from "viem";
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { SimulatedFlashbotsBundle } from "./flashbots.js";
+import type { UnsafeBoundaryAudit } from "./unsafe.js";
 import { assertRescueFinalState, type BalanceSnapshot, type RescueWorkflow } from "./workflow.js";
 import type { EvmChain, Hash } from "./types.js";
 
@@ -21,6 +22,7 @@ export interface RescueVerificationReport<C extends EvmChain = EvmChain> {
   readonly state: RescueVerificationState;
   readonly reportHash: Hash<"keccak256">;
   readonly checks: readonly VerificationCheck[];
+  readonly unsafeBoundaries?: readonly UnsafeBoundaryAudit[];
   readonly readyForBroadcast: boolean;
   readonly recoveryObserved: boolean;
   readonly verifiedRecovery: boolean;
@@ -32,6 +34,8 @@ export interface RescuePlanVerificationOptions<C extends EvmChain> {
   readonly atomic?: boolean;
   readonly flashbots?: SimulatedFlashbotsBundle<C>;
   readonly allowStateOverrideSimulation?: boolean;
+  readonly unsafeBoundaries?: readonly UnsafeBoundaryAudit[];
+  readonly allowUnsafeBoundaries?: boolean;
 }
 
 function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
@@ -42,22 +46,46 @@ function check(id: string, status: VerificationCheckStatus, message: string, det
   return { id, status, message, ...(details ? { details } : {}) };
 }
 
-export function verificationReportHash<C extends EvmChain>(chain: C, state: RescueVerificationState, checks: readonly VerificationCheck[]): Hash<"keccak256"> {
-  const normalized = JSON.stringify({
+function normalizeUnsafeBoundaries(boundaries: readonly UnsafeBoundaryAudit[]): readonly Record<string, string | number>[] {
+  return boundaries.map((boundary) => ({
+    id: boundary.id,
+    reason: boundary.reason,
+    file: boundary.file,
+    line: boundary.line,
+    column: boundary.column,
+  }));
+}
+
+export function verificationReportHash<C extends EvmChain>(
+  chain: C,
+  state: RescueVerificationState,
+  checks: readonly VerificationCheck[],
+  unsafeBoundaries: readonly UnsafeBoundaryAudit[] = [],
+): Hash<"keccak256"> {
+  const base = {
     chainId: chain.id,
     state,
     checks: checks.map((entry) => ({ id: entry.id, status: entry.status, message: entry.message, details: entry.details ?? null })),
-  });
+  };
+  const normalized = JSON.stringify(unsafeBoundaries.length > 0
+    ? { ...base, unsafeBoundaries: normalizeUnsafeBoundaries(unsafeBoundaries) }
+    : base);
   return keccak256(stringToHex(normalized)) as Hash<"keccak256">;
 }
 
-function report<C extends EvmChain>(chain: C, state: RescueVerificationState, checks: readonly VerificationCheck[]): RescueVerificationReport<C> {
+function report<C extends EvmChain>(
+  chain: C,
+  state: RescueVerificationState,
+  checks: readonly VerificationCheck[],
+  unsafeBoundaries: readonly UnsafeBoundaryAudit[] = [],
+): RescueVerificationReport<C> {
   return {
     kind: "rescue-verification-report",
     chain,
     state,
-    reportHash: verificationReportHash(chain, state, checks),
+    reportHash: verificationReportHash(chain, state, checks, unsafeBoundaries),
     checks,
+    ...(unsafeBoundaries.length > 0 ? { unsafeBoundaries } : {}),
     readyForBroadcast: state === "READY_FOR_BROADCAST" || state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
     recoveryObserved: state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
     verifiedRecovery: state === "VERIFIED_RECOVERY",
@@ -75,6 +103,7 @@ export function verifyRescuePlan<C extends EvmChain>(options: RescuePlanVerifica
   const checks: VerificationCheck[] = [];
   const atomic = options.atomic ?? true;
   const allowStateOverride = options.allowStateOverrideSimulation ?? false;
+  const unsafeBoundaries = options.unsafeBoundaries ?? [];
 
   checks.push(check(
     "graph.complete",
@@ -82,6 +111,19 @@ export function verifyRescuePlan<C extends EvmChain>(options: RescuePlanVerifica
     "Rescue workflow passed graph construction and completeness checks.",
     { nodes: workflow.graph.nodes.length, assets: workflow.assets.length, nativeSweepRequired: workflow.requireNativeSweep },
   ));
+
+  if (unsafeBoundaries.length > 0) {
+    checks.push(check(
+      "unsafe.boundaries",
+      options.allowUnsafeBoundaries ? "warning" : "fail",
+      options.allowUnsafeBoundaries
+        ? "Unsafe boundaries are present and were explicitly authorized by verification policy."
+        : "Unsafe boundaries are present. Broadcast readiness requires explicit verification-policy authorization.",
+      { count: unsafeBoundaries.length },
+    ));
+  } else {
+    checks.push(check("unsafe.boundaries", "pass", "No explicit unsafe boundaries were recorded in the verified source.", { count: 0 }));
+  }
 
   const stateOverrideNodes = workflow.graph.ordered.filter((node) => node.tx.simulation.stateOverrides);
   if (stateOverrideNodes.length > 0 && !allowStateOverride) {
@@ -156,7 +198,7 @@ export function verifyRescuePlan<C extends EvmChain>(options: RescuePlanVerifica
   }
 
   const failed = checks.some((entry) => entry.status === "fail");
-  return report(workflow.chain, failed ? "NOT_READY" : "READY_FOR_BROADCAST", checks);
+  return report(workflow.chain, failed ? "NOT_READY" : "READY_FOR_BROADCAST", checks, unsafeBoundaries);
 }
 
 export function assertRescueReadyForBroadcast<C extends EvmChain>(options: RescuePlanVerificationOptions<C>): RescueVerificationReport<C> {
@@ -178,12 +220,13 @@ export function verifyCompletedRescue<C extends EvmChain>(input: {
   preBroadcastReport?: RescueVerificationReport<C>;
 }): RescueVerificationReport<C> {
   const checks: VerificationCheck[] = [...(input.preBroadcastReport?.checks ?? [])];
+  const unsafeBoundaries = input.preBroadcastReport?.unsafeBoundaries ?? [];
   try {
     const finalState = assertRescueFinalState(input.workflow, input.before, input.after);
     checks.push(check("recovery.final-state", "pass", "Post-execution state satisfies all configured rescue invariants.", { invariants: finalState.results.length, afterBlock: input.after.blockNumber.toString() }));
     if (input.finality === "finalized") {
       checks.push(check("recovery.finality", "pass", "Recovery state evidence is declared finalized by the caller's chain-finality evidence.", { finality: input.finality }));
-      return report(input.workflow.chain, "VERIFIED_RECOVERY", checks);
+      return report(input.workflow.chain, "VERIFIED_RECOVERY", checks, unsafeBoundaries);
     }
     checks.push(check(
       "recovery.finality",
@@ -191,10 +234,10 @@ export function verifyCompletedRescue<C extends EvmChain>(input: {
       "Recovery objective is observed, but the evidence has not reached finalized chain state and can still be affected by reorg semantics.",
       { finality: input.finality },
     ));
-    return report(input.workflow.chain, "RECOVERY_OBSERVED", checks);
+    return report(input.workflow.chain, "RECOVERY_OBSERVED", checks, unsafeBoundaries);
   } catch (error) {
     if (!(error instanceof EraDiagnosticError)) throw error;
     checks.push(check("recovery.final-state", "fail", error.message));
-    return report(input.workflow.chain, "NOT_READY", checks);
+    return report(input.workflow.chain, "NOT_READY", checks, unsafeBoundaries);
   }
 }
