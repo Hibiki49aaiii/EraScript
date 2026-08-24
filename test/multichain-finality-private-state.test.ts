@@ -30,11 +30,11 @@ import {
   signSimulated,
 } from "../src/web3/index.js";
 
-const TX_HASH = `0x${"11".repeat(32)}`;
-const L2_BLOCK_HASH = `0x${"22".repeat(32)}`;
-const L1_BLOCK_HASH = `0x${"33".repeat(32)}`;
-const L1_TX_HASH = `0x${"44".repeat(32)}`;
-const TOKEN = `0x${"55".repeat(20)}` as const;
+const TX_HASH = `0x${"11".repeat(32)}` as `0x${string}`;
+const L2_BLOCK_HASH = `0x${"22".repeat(32)}` as `0x${string}`;
+const L1_BLOCK_HASH = `0x${"33".repeat(32)}` as `0x${string}`;
+const L1_TX_HASH = `0x${"44".repeat(32)}` as `0x${string}`;
+const TOKEN = `0x${"55".repeat(20)}` as `0x${string}`;
 
 test("rollup finality keeps L2 finality separate from protocol-specific L1 settlement", async () => {
   const profile = defineEvmChainProfile({
