@@ -226,7 +226,8 @@ export function createFlashbotsRelay<C extends EvmChain>(input: { url: string; a
     async request<Result>(method: string, params: readonly unknown[]): Promise<Result> {
       const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
       const bodyHash = keccak256(stringToHex(body));
-      const signature = await account.signMessage({ message: { raw: bodyHash } });
+      // Flashbots signs the hexadecimal keccak256(body) string as an EIP-191 text message.
+      const signature = await account.signMessage({ message: bodyHash });
       let response: Response;
       try {
         response = await fetch(input.url, {
