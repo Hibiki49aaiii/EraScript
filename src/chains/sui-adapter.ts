@@ -22,6 +22,20 @@ export interface SuiClientLike {
   getTransaction?: (input: Record<string, unknown>) => Promise<unknown>;
 }
 
+/**
+ * Normalize `Transaction.from(bytes).getData()` (or an equivalent trusted decoder)
+ * into this small inspection surface. EraScript intentionally does not depend on
+ * @mysten/sui directly; the caller supplies the decoder from the installed SDK.
+ */
+export interface SuiTransactionInspection {
+  readonly sender: string;
+  readonly gasOwner: string;
+  readonly gasBudget?: bigint | string | number;
+  readonly gasPrice?: bigint | string | number;
+  readonly commandCount?: number;
+}
+export type SuiTransactionInspector = (serializedTransaction: Uint8Array) => SuiTransactionInspection | Promise<SuiTransactionInspection>;
+
 export interface SuiPreparedTransaction {
   readonly state: "sui-prepared";
   readonly profileId: string;
@@ -29,10 +43,21 @@ export interface SuiPreparedTransaction {
   readonly gasOwner: SuiAddress;
   readonly serializedBase64: string;
   readonly bindingHash: SuiTransactionBindingHash;
+  readonly inspectionVerified: false;
+}
+export interface SuiVerifiedPreparedTransaction extends Omit<SuiPreparedTransaction, "inspectionVerified"> {
+  readonly inspectionVerified: true;
+  readonly inspection: {
+    readonly sender: SuiAddress;
+    readonly gasOwner: SuiAddress;
+    readonly gasBudget?: bigint;
+    readonly gasPrice?: bigint;
+    readonly commandCount?: number;
+  };
 }
 export interface SuiSimulationEvidence {
   readonly state: "sui-simulated";
-  readonly transaction: SuiPreparedTransaction;
+  readonly transaction: SuiVerifiedPreparedTransaction;
   readonly checksEnabled: boolean;
   readonly success: boolean;
   readonly statusError?: string;
@@ -75,6 +100,9 @@ function integer(value: unknown, field: string): bigint {
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
   if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
   fail("ES4490", "MalformedSuiResponse", `Sui field '${field}' must be a non-negative integer.`, { field, value: String(value) });
+}
+function optionalInteger(value: unknown, field: string): bigint | undefined {
+  return value === undefined || value === null ? undefined : integer(value, field);
 }
 function responseField(value: unknown, field: string): unknown {
   if (value && typeof value === "object" && !Array.isArray(value) && field in (value as Record<string, unknown>)) return (value as Record<string, unknown>)[field];
@@ -134,10 +162,34 @@ export function prepareSuiTransaction(input: { profile: SuiChainProfile; sender:
   base64Bytes(input.serializedBase64);
   const sender = suiAddress(input.sender);
   const gasOwner = suiAddress(input.gasOwner ?? input.sender);
-  return { state: "sui-prepared", profileId: input.profile.id, sender, gasOwner, serializedBase64: input.serializedBase64, bindingHash: bindingHash(input.serializedBase64, sender, gasOwner) };
+  return { state: "sui-prepared", profileId: input.profile.id, sender, gasOwner, serializedBase64: input.serializedBase64, bindingHash: bindingHash(input.serializedBase64, sender, gasOwner), inspectionVerified: false };
 }
 
-export async function simulateSuiPreparedTransaction(client: SuiClientLike, prepared: SuiPreparedTransaction, options: { checksEnabled?: boolean; doGasSelection?: boolean } = {}): Promise<SuiSimulationEvidence> {
+export async function verifySuiSerializedTransaction(prepared: SuiPreparedTransaction, inspector: SuiTransactionInspector): Promise<SuiVerifiedPreparedTransaction> {
+  let raw: SuiTransactionInspection;
+  try { raw = await inspector(base64Bytes(prepared.serializedBase64)); }
+  catch (error) { return fail("ES4501", "SuiTransactionInspectionFailed", "Failed to inspect serialized Sui transaction bytes.", { cause: error instanceof Error ? error.message : String(error) }); }
+  const sender = suiAddress(raw.sender);
+  const gasOwner = suiAddress(raw.gasOwner);
+  if (sender !== prepared.sender) fail("ES4502", "SuiTransactionInspectionMismatch", "Serialized Sui transaction sender differs from the EraScript-bound sender.", { expected: prepared.sender, actual: sender });
+  if (gasOwner !== prepared.gasOwner) fail("ES4502", "SuiTransactionInspectionMismatch", "Serialized Sui transaction gas owner differs from the EraScript-bound gas owner.", { expected: prepared.gasOwner, actual: gasOwner });
+  if (raw.commandCount !== undefined && (!Number.isSafeInteger(raw.commandCount) || raw.commandCount < 0)) fail("ES4502", "SuiTransactionInspectionMismatch", "Sui transaction inspector returned an invalid command count.", { commandCount: raw.commandCount });
+  const gasBudget = optionalInteger(raw.gasBudget, "gasBudget");
+  const gasPrice = optionalInteger(raw.gasPrice, "gasPrice");
+  return {
+    ...prepared,
+    inspectionVerified: true,
+    inspection: {
+      sender,
+      gasOwner,
+      ...(gasBudget !== undefined ? { gasBudget } : {}),
+      ...(gasPrice !== undefined ? { gasPrice } : {}),
+      ...(raw.commandCount !== undefined ? { commandCount: raw.commandCount } : {}),
+    },
+  };
+}
+
+export async function simulateSuiPreparedTransaction(client: SuiClientLike, prepared: SuiVerifiedPreparedTransaction, options: { checksEnabled?: boolean; doGasSelection?: boolean } = {}): Promise<SuiSimulationEvidence> {
   const checksEnabled = options.checksEnabled ?? true;
   const simulate = method(client, "simulateTransaction");
   const raw = await simulate({ transaction: base64Bytes(prepared.serializedBase64), checksEnabled, ...(options.doGasSelection !== undefined ? { doGasSelection: options.doGasSelection } : {}), include: { effects: true, balanceChanges: true, commandResults: true } });
