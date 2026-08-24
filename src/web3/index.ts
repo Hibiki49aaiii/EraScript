@@ -2,6 +2,7 @@ export * from "./abi.js";
 export * from "./analyze.js";
 export * from "./capabilities.js";
 export * from "./events.js";
+export * from "./flashbots.js";
 export * from "./merkle.js";
 export * from "./nonce.js";
 export * from "./permit.js";
