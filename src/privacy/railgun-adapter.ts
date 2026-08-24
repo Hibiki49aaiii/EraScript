@@ -62,8 +62,8 @@ function gasEstimateFrom(value: unknown): bigint {
   if (value && typeof value === "object" && !Array.isArray(value) && "gasEstimate" in (value as Record<string, unknown>)) return bigintValue((value as Record<string, unknown>).gasEstimate, "gasEstimate");
   return bigintValue(value, "gasEstimate");
 }
-function sdkTransfers(intent: RailgunIntent, serializer: RailgunWalletSdkConfig["serializeTransfer"]): readonly unknown[] {
-  return intent.transfers.map(serializer);
+function sdkTransfers(source: { readonly transfers: readonly RailgunPrivateTransfer[] }, serializer: RailgunWalletSdkConfig["serializeTransfer"]): readonly unknown[] {
+  return source.transfers.map(serializer);
 }
 function assertSdkConfig(config: RailgunWalletSdkConfig): void {
   if (!config.encryptionKey) fail("ES4511", "MissingRailgunEncryptionKey", "RAILGUN Wallet SDK adapter requires an encryption key supplied outside AI source generation.");
