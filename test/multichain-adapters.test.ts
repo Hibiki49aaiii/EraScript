@@ -17,6 +17,7 @@ import {
   prepareSolanaSerializedTransaction,
   prepareSuiTransaction,
   readJitoBundleStatus,
+  readJitoTipAccounts,
   readSolanaSignatureStatus,
   simulateSolanaTransaction,
   simulateSuiPreparedTransaction,
@@ -24,13 +25,18 @@ import {
   submitJitoBundle,
   submitSolanaTransaction,
   executeSuiTransaction,
+  verifyJitoBundleTip,
+  verifySolanaSerializedTransaction,
+  verifySuiSerializedTransaction,
   waitForSuiCheckpoint,
 } from "../src/chains/index.js";
 
 const SOL_BLOCKHASH = "1".repeat(32);
+const SOL_OTHER_BLOCKHASH = "2".repeat(32);
 const SOL_SIGNATURE = "1".repeat(64);
 const SUI_DIGEST = "1".repeat(32);
 const SUI_ADDRESS = `0x${"00".repeat(32)}`;
+const SUI_OTHER_ADDRESS = `0x${"11".repeat(32)}`;
 const BASE64_TX = "AQ==";
 
 test("generic EVM discovery only promotes capabilities proven by RPC evidence", async () => {
@@ -52,7 +58,7 @@ test("generic EVM discovery only promotes capabilities proven by RPC evidence", 
   assert.throws(() => assertEvmCapability(evidence, "eip7702"), (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4451");
 });
 
-test("Solana adapter binds recent blockhash, simulation, submission, and finality", async () => {
+test("Solana adapter requires serialized blockhash/version inspection before simulation", async () => {
   let blockHeight = 100n;
   const client = {
     rpc: {
@@ -65,48 +71,75 @@ test("Solana adapter binds recent blockhash, simulation, submission, and finalit
   };
   const recent = await captureSolanaRecentBlockhash(client);
   const prepared = prepareSolanaSerializedTransaction({ profile: SolanaMainnetProfile, serializedBase64: BASE64_TX, recentBlockhash: recent });
-  const simulation = await simulateSolanaTransaction(client, prepared);
+  const verified = await verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: SOL_BLOCKHASH, signerCount: 1 }));
+  const simulation = await simulateSolanaTransaction(client, verified);
   assert.equal(simulation.success, true);
   const submitted = await submitSolanaTransaction(client, simulation as typeof simulation & { success: true });
   assert.equal(submitted.signature, SOL_SIGNATURE);
   const status = await readSolanaSignatureStatus(client, solanaTransactionSignature(SOL_SIGNATURE));
   assert.equal(assertSolanaFinalized(status).confirmationStatus, "finalized");
 
+  await assert.rejects(
+    () => verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: SOL_OTHER_BLOCKHASH, signerCount: 1 })),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4468",
+  );
+
   blockHeight = 151n;
-  await assert.rejects(() => simulateSolanaTransaction(client, prepared), (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4416");
+  await assert.rejects(() => simulateSolanaTransaction(client, verified), (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4416");
 });
 
-test("Jito bundle submission is not success until finalized bundle status matches", async () => {
+test("Jito requires official tip-account evidence and an exact serialized tip transfer before sendBundle", async () => {
   const tip = jitoTip({ account: SOL_BLOCKHASH, lamports: lamports(1_000n), transactionIndex: 0 });
   const draft = createJitoBundle({ profile: SolanaMainnetProfile, transactionsBase64: [BASE64_TX], expectedSignatures: [SOL_SIGNATURE], tip });
   const relay = {
     async request<Result>(method: string): Promise<Result> {
+      if (method === "getTipAccounts") return [SOL_BLOCKHASH] as Result;
       if (method === "sendBundle") return "bundle-1" as Result;
       if (method === "getBundleStatuses") return { value: [{ bundle_id: "bundle-1", slot: 250n, confirmationStatus: "finalized", transactions: [SOL_SIGNATURE], err: null }] } as Result;
       throw new Error(method);
     },
   };
-  const submitted = await submitJitoBundle(relay, draft);
+  const accounts = await readJitoTipAccounts(relay);
+  const verified = await verifyJitoBundleTip(draft, accounts, async () => ({
+    tipTransfers: [{ recipient: SOL_BLOCKHASH, lamports: 1_000n, via: "top-level" }],
+    tipAccountResolvedViaAddressLookupTable: false,
+  }));
+  const submitted = await submitJitoBundle(relay, verified);
   assert.equal(submitted.state, "jito-bundle-submitted");
   const status = await readJitoBundleStatus(relay, submitted);
   assert.equal(assertJitoBundleFinalized(status).confirmationStatus, "finalized");
+
+  await assert.rejects(
+    () => verifyJitoBundleTip(draft, accounts, async () => ({ tipTransfers: [{ recipient: SOL_BLOCKHASH, lamports: 2_000n }] })),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4486",
+  );
+  await assert.rejects(
+    () => verifyJitoBundleTip(draft, accounts, async () => ({ tipTransfers: [{ recipient: SOL_BLOCKHASH, lamports: 1_000n }], tipAccountResolvedViaAddressLookupTable: true })),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4484",
+  );
 });
 
-test("Sui v2 adapter distinguishes simulation/execution success from FailedTransaction and waits for checkpoint", async () => {
+test("Sui v2 adapter requires sender/gas-owner inspection and distinguishes failed execution", async () => {
   const prepared = prepareSuiTransaction({ profile: SuiMainnetProfile, sender: SUI_ADDRESS, serializedBase64: BASE64_TX });
+  const verified = await verifySuiSerializedTransaction(prepared, async () => ({ sender: SUI_ADDRESS, gasOwner: SUI_ADDRESS, gasBudget: 1_000n, gasPrice: 1n, commandCount: 1 }));
   const client = {
     network: "mainnet",
     async simulateTransaction() { return { Transaction: { digest: SUI_DIGEST, status: { success: true }, balanceChanges: [], commandResults: [] } }; },
     async executeTransaction() { return { Transaction: { digest: SUI_DIGEST, status: { success: true }, checkpoint: 77n } }; },
     async waitForTransaction() { return { Transaction: { digest: SUI_DIGEST, status: { success: true }, checkpoint: 77n } }; },
   };
-  const simulation = await simulateSuiPreparedTransaction(client, prepared);
+  const simulation = await simulateSuiPreparedTransaction(client, verified);
   assert.equal(assertSuiRealSimulation(simulation).success, true);
   const executed = await executeSuiTransaction(client, simulation, ["signature"]);
   assert.equal(executed.state, "sui-executed");
   if (executed.state !== "sui-executed") throw new Error("expected Sui execution success");
   const checkpoint = await waitForSuiCheckpoint(client, executed);
   assert.equal(checkpoint.checkpoint, 77n);
+
+  await assert.rejects(
+    () => verifySuiSerializedTransaction(prepared, async () => ({ sender: SUI_ADDRESS, gasOwner: SUI_OTHER_ADDRESS })),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4502",
+  );
 
   const failedClient = { ...client, async executeTransaction() { return { FailedTransaction: { digest: SUI_DIGEST, status: { success: false, error: "MoveAbort" } } }; } };
   const failed = await executeSuiTransaction(failedClient, simulation, ["signature"]);
