@@ -22,10 +22,10 @@ function fail(code: string, kind: string, message: string, details?: Record<stri
 export function validateUnsafeReason(reason: string): string {
   const normalized = reason.trim();
   if (normalized.length < 12) {
-    fail("ES3902", "UnsafeBoundaryReasonTooShort", "Unsafe boundary reasons must describe the concrete compatibility or protocol requirement being bypassed.", { minimumLength: 12, actualLength: normalized.length });
+    fail("ES4082", "UnsafeBoundaryReasonTooShort", "Unsafe boundary reasons must describe the concrete compatibility or protocol requirement being bypassed.", { minimumLength: 12, actualLength: normalized.length });
   }
   if (normalized.length > 240) {
-    fail("ES3904", "UnsafeBoundaryReasonTooLong", "Unsafe boundary reasons must remain concise enough to audit.", { maximumLength: 240, actualLength: normalized.length });
+    fail("ES4084", "UnsafeBoundaryReasonTooLong", "Unsafe boundary reasons must remain concise enough to audit.", { maximumLength: 240, actualLength: normalized.length });
   }
   return normalized;
 }
@@ -37,16 +37,16 @@ export function validateUnsafeReason(reason: string): string {
  */
 export function unsafeBoundary<T>(reason: string, operation: () => T): T {
   validateUnsafeReason(reason);
-  if (typeof operation !== "function") fail("ES3903", "InvalidUnsafeBoundaryOperation", "unsafeBoundary requires a callback operation.");
+  if (typeof operation !== "function") fail("ES4083", "InvalidUnsafeBoundaryOperation", "unsafeBoundary requires a callback operation.");
   return operation();
 }
 
 export function assertUnsafeBoundaryPolicy(boundaries: readonly UnsafeBoundaryAudit[], policy: UnsafeBoundaryPolicy): void {
   if (boundaries.length === 0) return;
-  if (!policy.allow) fail("ES3905", "UnsafeBoundariesNotAuthorized", "Unsafe boundaries are present but verification policy does not authorize them.", { count: boundaries.length });
-  if (policy.maxBoundaries !== undefined && boundaries.length > policy.maxBoundaries) fail("ES3906", "UnsafeBoundaryLimitExceeded", "Unsafe boundary count exceeds verification policy.", { count: boundaries.length, maxBoundaries: policy.maxBoundaries });
+  if (!policy.allow) fail("ES4085", "UnsafeBoundariesNotAuthorized", "Unsafe boundaries are present but verification policy does not authorize them.", { count: boundaries.length });
+  if (policy.maxBoundaries !== undefined && boundaries.length > policy.maxBoundaries) fail("ES4086", "UnsafeBoundaryLimitExceeded", "Unsafe boundary count exceeds verification policy.", { count: boundaries.length, maxBoundaries: policy.maxBoundaries });
   if (policy.allowedReasons) {
     const denied = boundaries.filter((boundary) => !policy.allowedReasons!.includes(boundary.reason));
-    if (denied.length > 0) fail("ES3907", "UnsafeBoundaryReasonNotAuthorized", "One or more unsafe boundary reasons are outside the verification allowlist.", { denied: denied.map((boundary) => boundary.reason) });
+    if (denied.length > 0) fail("ES4087", "UnsafeBoundaryReasonNotAuthorized", "One or more unsafe boundary reasons are outside the verification allowlist.", { denied: denied.map((boundary) => boundary.reason) });
   }
 }
