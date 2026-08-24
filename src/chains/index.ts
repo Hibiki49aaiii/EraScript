@@ -3,6 +3,7 @@ export * from "./profiles.js";
 export * from "./evm-discovery.js";
 export * from "./external-signer.js";
 export * from "./verification.js";
+export * from "./verification-adapters.js";
 export * from "./solana.js";
 export * from "./solana-adapter.js";
 export * from "./jito.js";
