@@ -6,7 +6,13 @@ import {
   type Eip7702AuthorizationRequest,
   type SignedEip7702Authorization,
 } from "./eip7702.js";
-import { signSimulated, type SignedTx, type SimulatedTx } from "./tx.js";
+import {
+  authorizationListForViem,
+  signSimulated,
+  type SignedTx,
+  type SimulatedTx,
+  type ViemEip7702Authorization,
+} from "./tx.js";
 import { typedSignature, type TypedDataEnvelope, type TypedSignature } from "./typed-data.js";
 import type { Address, EvmChain } from "./types.js";
 import { unwrapGas, unwrapWei } from "./values.js";
@@ -14,12 +20,14 @@ import { unwrapGas, unwrapWei } from "./values.js";
 export interface ExternalTransactionSigningRequest<C extends EvmChain = EvmChain> {
   readonly kind: "external-transaction-signing-request";
   readonly chain: C;
+  readonly transactionType: "legacy" | "eip1559" | "eip7702";
   readonly from: Address<C>;
   readonly to?: Address<C>;
   readonly value: bigint;
   readonly data?: Hex;
   readonly nonce: number;
   readonly gas: bigint;
+  readonly authorizationList?: readonly ViemEip7702Authorization<C>[];
   readonly fee:
     | { readonly type: "legacy"; readonly gasPrice: bigint }
     | { readonly type: "eip1559"; readonly maxFeePerGas: bigint; readonly maxPriorityFeePerGas: bigint };
@@ -74,15 +82,18 @@ export function externalSignerCapability<C extends EvmChain>(signer: ExternalSig
 
 export function externalTransactionRequest<C extends EvmChain>(simulated: SimulatedTx<C>): ExternalTransactionSigningRequest<C> {
   if (!simulated.intent.from) fail("ES3830", "MissingExternalSignerAddress", "External signing requires an explicit transaction sender.");
+  const authorizationList = authorizationListForViem(simulated.intent);
   return {
     kind: "external-transaction-signing-request",
     chain: simulated.intent.chain,
+    transactionType: authorizationList ? "eip7702" : simulated.fees.type,
     from: simulated.intent.from,
     ...(simulated.intent.to ? { to: simulated.intent.to } : {}),
     value: simulated.intent.value === undefined ? 0n : unwrapWei(simulated.intent.value),
     ...(simulated.intent.data ? { data: simulated.intent.data as Hex } : {}),
     nonce: simulated.nonce.value,
     gas: unwrapGas(simulated.gas),
+    ...(authorizationList ? { authorizationList } : {}),
     fee: simulated.fees.type === "eip1559"
       ? {
           type: "eip1559",
