@@ -25,7 +25,6 @@ type BaseEvmExecution<C extends EvmChain> = IncludedTx<C> | ConfirmedTx<C, numbe
 function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
   throw new EraDiagnosticError({ code, severity: "error", kind, message, ...(details ? { details } : {}) });
 }
-
 function baseTransactionHash<C extends EvmChain>(transaction: BaseEvmExecution<C>): string {
   return transaction.receipt.transactionHash;
 }
@@ -48,6 +47,9 @@ export function railgunVerificationReport<C extends EvmChain>(input: {
   baseExecution?: BaseEvmExecution<C>;
   privateState?: RailgunPrivateStateEvidence;
 }): MultichainVerificationReport {
+  if (input.submission.chain.id !== input.profile.chainId) fail("ES4563", "RailgunBaseChainMismatch", "RAILGUN submission chain does not match the selected EVM chain profile.", { submissionChainId: input.submission.chain.id, profileChainId: input.profile.chainId });
+  if (input.baseExecution && input.baseExecution.intent.chain.id !== input.submission.chain.id) fail("ES4563", "RailgunBaseChainMismatch", "Base EVM execution evidence belongs to another chain.", { submissionChainId: input.submission.chain.id, executionChainId: input.baseExecution.intent.chain.id });
+
   const checks: MultichainVerificationCheck[] = [
     { id: "railgun.proof-binding", status: "pass", message: "RAILGUN submission retains the proof binding generated for the selected transfer/gas/fee conditions." },
   ];
