@@ -4,8 +4,9 @@ import type { SimulatedFlashbotsBundle } from "./flashbots.js";
 import { assertRescueFinalState, type BalanceSnapshot, type RescueWorkflow } from "./workflow.js";
 import type { EvmChain, Hash } from "./types.js";
 
-export type RescueVerificationState = "NOT_READY" | "READY_FOR_BROADCAST" | "VERIFIED_RECOVERY";
+export type RescueVerificationState = "NOT_READY" | "READY_FOR_BROADCAST" | "RECOVERY_OBSERVED" | "VERIFIED_RECOVERY";
 export type VerificationCheckStatus = "pass" | "fail" | "warning";
+export type RecoveryFinality = "included" | "confirmed" | "finalized";
 
 export interface VerificationCheck {
   readonly id: string;
@@ -21,6 +22,7 @@ export interface RescueVerificationReport<C extends EvmChain = EvmChain> {
   readonly reportHash: Hash<"keccak256">;
   readonly checks: readonly VerificationCheck[];
   readonly readyForBroadcast: boolean;
+  readonly recoveryObserved: boolean;
   readonly verifiedRecovery: boolean;
 }
 
@@ -56,7 +58,8 @@ function report<C extends EvmChain>(chain: C, state: RescueVerificationState, ch
     state,
     reportHash: stableReportHash(chain, state, checks),
     checks,
-    readyForBroadcast: state === "READY_FOR_BROADCAST" || state === "VERIFIED_RECOVERY",
+    readyForBroadcast: state === "READY_FOR_BROADCAST" || state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
+    recoveryObserved: state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
     verifiedRecovery: state === "VERIFIED_RECOVERY",
   };
 }
@@ -106,11 +109,15 @@ export function verifyRescuePlan<C extends EvmChain>(options: RescuePlanVerifica
     checks.push(check("simulation.anchored", "pass", "All transaction simulations are block-anchored.", { count: workflow.graph.ordered.length }));
   }
 
-  const simulationBlocks = new Set(workflow.graph.ordered.map((node) => node.tx.simulation.blockNumber?.toString() ?? "missing"));
-  if (simulationBlocks.size > 1) {
-    checks.push(check("simulation.common-state", "fail", "Workflow transaction simulations were produced from different block numbers.", { distinctBlocks: simulationBlocks.size }));
+  const simulationStates = new Set(workflow.graph.ordered.map((node) => {
+    const number = node.tx.simulation.blockNumber?.toString() ?? "missing";
+    const block = node.tx.simulation.blockHash?.toLowerCase() ?? "missing";
+    return `${number}:${block}`;
+  }));
+  if (simulationStates.size > 1) {
+    checks.push(check("simulation.common-state", "fail", "Workflow transaction simulations were produced from different block states.", { distinctStates: simulationStates.size }));
   } else {
-    checks.push(check("simulation.common-state", "pass", "Workflow transaction simulations share one state block.", { block: [...simulationBlocks][0] ?? "unknown" }));
+    checks.push(check("simulation.common-state", "pass", "Workflow transaction simulations share one block number/hash state.", { state: [...simulationStates][0] ?? "unknown" }));
   }
 
   if (atomic) {
@@ -167,13 +174,24 @@ export function verifyCompletedRescue<C extends EvmChain>(input: {
   workflow: RescueWorkflow<C>;
   before: BalanceSnapshot<C>;
   after: BalanceSnapshot<C>;
+  finality: RecoveryFinality;
   preBroadcastReport?: RescueVerificationReport<C>;
 }): RescueVerificationReport<C> {
   const checks: VerificationCheck[] = [...(input.preBroadcastReport?.checks ?? [])];
   try {
     const finalState = assertRescueFinalState(input.workflow, input.before, input.after);
     checks.push(check("recovery.final-state", "pass", "Post-execution state satisfies all configured rescue invariants.", { invariants: finalState.results.length, afterBlock: input.after.blockNumber.toString() }));
-    return report(input.workflow.chain, "VERIFIED_RECOVERY", checks);
+    if (input.finality === "finalized") {
+      checks.push(check("recovery.finality", "pass", "Recovery state evidence is declared finalized by the caller's chain-finality evidence.", { finality: input.finality }));
+      return report(input.workflow.chain, "VERIFIED_RECOVERY", checks);
+    }
+    checks.push(check(
+      "recovery.finality",
+      "warning",
+      "Recovery objective is observed, but the evidence has not reached finalized chain state and can still be affected by reorg semantics.",
+      { finality: input.finality },
+    ));
+    return report(input.workflow.chain, "RECOVERY_OBSERVED", checks);
   } catch (error) {
     if (!(error instanceof EraDiagnosticError)) throw error;
     checks.push(check("recovery.final-state", "fail", error.message));
