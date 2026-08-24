@@ -76,6 +76,10 @@ function integer(value: unknown, field: string): bigint {
   if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
   fail("ES4490", "MalformedSuiResponse", `Sui field '${field}' must be a non-negative integer.`, { field, value: String(value) });
 }
+function responseField(value: unknown, field: string): unknown {
+  if (value && typeof value === "object" && !Array.isArray(value) && field in (value as Record<string, unknown>)) return (value as Record<string, unknown>)[field];
+  return value;
+}
 function base64Bytes(value: string): Uint8Array {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length % 4 !== 0) fail("ES4491", "InvalidSuiTransactionBytes", "Sui transaction bytes must use canonical base64.");
   const bytes = Buffer.from(value, "base64");
@@ -120,7 +124,7 @@ export async function assertSuiClientNetwork(client: SuiClientLike, profile: Sui
   const getChainIdentifier = client.core?.getChainIdentifier;
   if (typeof getChainIdentifier !== "function") fail("ES4492", "MissingSuiClientMethod", "Sui chain identifier verification requires client.core.getChainIdentifier().");
   const raw = await getChainIdentifier.call(client.core);
-  const value = object(raw, "getChainIdentifier response").chainIdentifier ?? raw;
+  const value = responseField(raw, "chainIdentifier");
   if (typeof value !== "string") fail("ES4490", "MalformedSuiResponse", "getChainIdentifier did not return a chain identifier string.");
   if (value !== expectedChainIdentifier) fail("ES4494", "SuiChainIdentifierMismatch", "Sui client is connected to a different chain identifier.", { expected: expectedChainIdentifier, actual: value });
   return value;
@@ -136,16 +140,10 @@ export function prepareSuiTransaction(input: { profile: SuiChainProfile; sender:
 export async function simulateSuiPreparedTransaction(client: SuiClientLike, prepared: SuiPreparedTransaction, options: { checksEnabled?: boolean; doGasSelection?: boolean } = {}): Promise<SuiSimulationEvidence> {
   const checksEnabled = options.checksEnabled ?? true;
   const simulate = method(client, "simulateTransaction");
-  const raw = await simulate({
-    transaction: base64Bytes(prepared.serializedBase64),
-    checksEnabled,
-    ...(options.doGasSelection !== undefined ? { doGasSelection: options.doGasSelection } : {}),
-    include: { effects: true, balanceChanges: true, commandResults: true },
-  });
+  const raw = await simulate({ transaction: base64Bytes(prepared.serializedBase64), checksEnabled, ...(options.doGasSelection !== undefined ? { doGasSelection: options.doGasSelection } : {}), include: { effects: true, balanceChanges: true, commandResults: true } });
   const result = resultTransaction(raw);
-  const record = result.record;
-  const balanceChanges = Array.isArray(record.balanceChanges) ? record.balanceChanges : undefined;
-  const commandResults = Array.isArray(record.commandResults) ? record.commandResults : undefined;
+  const balanceChanges = Array.isArray(result.record.balanceChanges) ? result.record.balanceChanges : undefined;
+  const commandResults = Array.isArray(result.record.commandResults) ? result.record.commandResults : undefined;
   return { state: "sui-simulated", transaction: prepared, checksEnabled, success: result.success, ...(result.error ? { statusError: result.error } : {}), ...(balanceChanges ? { balanceChanges } : {}), ...(commandResults ? { commandResults } : {}), raw };
 }
 
@@ -158,8 +156,7 @@ export function assertSuiRealSimulation(simulation: SuiSimulationEvidence): SuiS
 export async function executeSuiTransaction(client: SuiClientLike, simulation: SuiSimulationEvidence, signatures: readonly string[]): Promise<SuiExecutedTransaction | SuiExecutionFailedTransaction> {
   const checked = assertSuiRealSimulation(simulation);
   if (signatures.length === 0 || signatures.some((signature) => typeof signature !== "string" || signature.length === 0)) fail("ES4497", "MissingSuiSignatures", "Sui execution requires one or more non-empty serialized signatures.");
-  const execute = method(client, "executeTransaction");
-  const raw = await execute({ transaction: base64Bytes(checked.transaction.serializedBase64), signatures: [...signatures], include: { effects: true, events: true, balanceChanges: true, transaction: true } });
+  const raw = await method(client, "executeTransaction")({ transaction: base64Bytes(checked.transaction.serializedBase64), signatures: [...signatures], include: { effects: true, events: true, balanceChanges: true, transaction: true } });
   const result = resultTransaction(raw);
   const digest = digestFrom(result.record);
   if (!result.success) return { state: "sui-execution-failed", simulation: checked, ...(digest ? { digest } : {}), error: result.error ?? "Sui transaction failed", signatures: [...signatures], raw };
@@ -170,13 +167,12 @@ export async function executeSuiTransaction(client: SuiClientLike, simulation: S
 }
 
 export async function waitForSuiCheckpoint(client: SuiClientLike, transaction: SuiExecutedTransaction, options: { timeoutMs?: number; pollSchedule?: readonly number[] } = {}): Promise<SuiCheckpointEvidence> {
-  const wait = method(client, "waitForTransaction");
-  const raw = await wait({ digest: transaction.digest, ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}), ...(options.pollSchedule ? { pollSchedule: [...options.pollSchedule] } : {}), include: { effects: true, transaction: true } });
+  const raw = await method(client, "waitForTransaction")({ digest: transaction.digest, ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}), ...(options.pollSchedule ? { pollSchedule: [...options.pollSchedule] } : {}), include: { effects: true, transaction: true } });
   const result = resultTransaction(raw);
   if (!result.success) fail("ES4498", "SuiWaitObservedFailure", "waitForTransaction returned a failed transaction for a digest previously treated as successful.", { digest: transaction.digest, error: result.error ?? null });
   const digest = digestFrom(result.record);
   if (!digest || digest !== transaction.digest) fail("ES4499", "SuiDigestMismatch", "waitForTransaction returned evidence for a different transaction digest.", { expected: transaction.digest, actual: digest ?? null });
   const checkpoint = checkpointFrom(result.record);
-  if (checkpoint === undefined) fail("ES4498", "SuiCheckpointUnavailable", "Sui transaction is executed but checkpoint inclusion is not yet available.", { digest: transaction.digest });
+  if (checkpoint === undefined) fail("ES4500", "SuiCheckpointUnavailable", "Sui transaction is executed but checkpoint inclusion is not yet available.", { digest: transaction.digest });
   return { state: "sui-checkpointed", transaction, checkpoint, observedThrough: "waitForTransaction" };
 }
