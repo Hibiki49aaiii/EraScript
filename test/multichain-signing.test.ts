@@ -15,9 +15,11 @@ import {
   prepareSolanaSerializedTransaction,
   prepareSuiTransaction,
   signWithMultichainExternalSigner,
+  simulateSolanaTransaction,
   simulateSuiPreparedTransaction,
   solanaBlockhash,
   solanaRecentBlockhash,
+  submitSolanaTransaction,
   verifySolanaSerializedTransaction,
   verifySuiSerializedTransaction,
   type MultichainExternalSigner,
@@ -28,6 +30,7 @@ import {
 const SOL_FEE_PAYER = "11111111111111111111111111111111";
 const SOL_SECOND_SIGNER = "So11111111111111111111111111111111111111112";
 const SOL_BLOCKHASH = "1".repeat(32);
+const SOL_TX_SIGNATURE = "1".repeat(64);
 const SUI_SENDER = `0x${"11".repeat(32)}`;
 const SUI_SPONSOR = `0x${"22".repeat(32)}`;
 const SUI_DIGEST = "1".repeat(32);
@@ -83,7 +86,7 @@ test("Solana signing plan binds every required signer to the exact decoded messa
   assert.equal(plan.feePayer, SOL_FEE_PAYER);
 });
 
-test("Solana final wire assembly must preserve the exact signed message and signer set", async () => {
+test("Solana final wire assembly, signature-verified simulation, and submission preserve one exact transaction", async () => {
   const { verified, signingInspector, evidence } = await solanaFixture();
   const transactionInspector = async () => ({ version: 0 as const, recentBlockhash: solanaBlockhash(SOL_BLOCKHASH), signerCount: 2 });
   const assembled = await assembleAndVerifySolanaSignedTransaction({
@@ -100,7 +103,36 @@ test("Solana final wire assembly must preserve the exact signed message and sign
     signingInspector,
   });
   assert.equal(assembled.transaction.inspectionVerified, true);
+  assert.equal(assembled.transaction.signatureAssemblyVerified, true);
+  assert.equal(assembled.transaction.signatureEvidenceHash, evidence.evidenceHash);
   assert.equal(assembled.transaction.serializedBase64, SIGNED_TX_BASE64);
+
+  const client = {
+    rpc: {
+      getBlockHeight: () => ({ send: async () => 120n }),
+      simulateTransaction: (transaction: string, config?: Record<string, unknown>) => ({
+        send: async () => {
+          assert.equal(transaction, SIGNED_TX_BASE64);
+          assert.equal(config?.sigVerify, true);
+          assert.equal(config?.replaceRecentBlockhash, false);
+          return { value: { err: null, logs: ["signed-ok"], unitsConsumed: 321n } };
+        },
+      }),
+      sendTransaction: (transaction: string) => ({
+        send: async () => {
+          assert.equal(transaction, SIGNED_TX_BASE64);
+          return SOL_TX_SIGNATURE;
+        },
+      }),
+    },
+  };
+  const simulation = await simulateSolanaTransaction(client, assembled.transaction);
+  assert.equal(simulation.signatureVerification, true);
+  assert.equal(simulation.success, true);
+  if (!simulation.success) throw new Error("expected signed Solana simulation to succeed");
+  const submitted = await submitSolanaTransaction(client, simulation as typeof simulation & { readonly success: true });
+  assert.equal(submitted.state, "solana-submitted");
+  assert.equal(submitted.signature, SOL_TX_SIGNATURE);
 
   await assert.rejects(
     () => assembleAndVerifySolanaSignedTransaction({
