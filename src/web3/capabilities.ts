@@ -21,6 +21,9 @@ export interface SignerPolicy<C extends EvmChain = EvmChain> {
   readonly allowedTypedDataPrimaryTypes?: readonly string[];
   readonly allowedTypedDataVerifyingContracts?: readonly Address<C>[];
   readonly allowUnboundTypedDataContract?: boolean;
+  readonly allowedEip7702Delegates?: readonly Address<C>[];
+  readonly allowEip7702ClearDelegation?: boolean;
+  readonly allowReplayableEip7702Authorization?: boolean;
 }
 
 export interface SignerCapability<C extends EvmChain = EvmChain> {
@@ -44,7 +47,7 @@ export function signerCapability<C extends EvmChain>(secret: PrivateKeyRef<C>, p
   return { kind: "signer-capability", secret, chain: policy.chain, policy };
 }
 
-function sameAddress(a: string, b: string): boolean {
+export function sameAddress(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
 
@@ -58,27 +61,43 @@ function calldataSelector(data: string): FunctionSelector | undefined {
   return functionSelector(data.slice(0, 10));
 }
 
-export function assertSignerCapability<C extends EvmChain>(capability: SignerCapability<C>, simulated: SimulatedTx<C>): void {
-  if (capability.chain.id !== simulated.intent.chain.id) fail("ES3104", "ChainMismatch", "Signer capability is bound to a different chain.", { capabilityChain: capability.chain.name, transactionChain: simulated.intent.chain.name });
-  if (simulated.simulation.stateOverrides && !capability.policy.allowStateOverrideSimulation) fail("ES3804", "HypotheticalSimulationNotAuthorized", "A transaction simulated with state overrides cannot be signed by this capability.");
+export function assertSignerPolicy<C extends EvmChain>(chain: C, policy: SignerPolicy<C>, simulated: SimulatedTx<C>): void {
+  if (chain.id !== simulated.intent.chain.id || policy.chain.id !== chain.id) fail("ES3104", "ChainMismatch", "Signer policy is bound to a different chain.", { capabilityChain: chain.name, transactionChain: simulated.intent.chain.name });
+  if (simulated.simulation.stateOverrides && !policy.allowStateOverrideSimulation) fail("ES3804", "HypotheticalSimulationNotAuthorized", "A transaction simulated with state overrides cannot be signed by this policy.");
   if (!simulated.intent.from) fail("ES3805", "MissingSignerAddress", "A transaction must declare its sender before capability signing.");
 
   if (simulated.intent.to) {
-    if (!allowedAddress(simulated.intent.to, capability.policy.allowedDestinations)) fail("ES3806", "DestinationNotAuthorized", "Transaction destination is outside the signer capability allowlist.", { to: simulated.intent.to });
-  } else if (!capability.policy.allowContractCreation) {
-    fail("ES3807", "ContractCreationNotAuthorized", "Contract creation is disabled by this signer capability.");
+    if (!allowedAddress(simulated.intent.to, policy.allowedDestinations)) fail("ES3806", "DestinationNotAuthorized", "Transaction destination is outside the signer policy allowlist.", { to: simulated.intent.to });
+  } else if (!policy.allowContractCreation) {
+    fail("ES3807", "ContractCreationNotAuthorized", "Contract creation is disabled by this signer policy.");
   }
 
   const value = simulated.intent.value === undefined ? 0n : unwrapWei(simulated.intent.value);
-  const maxValue = capability.policy.maxValue === undefined ? 0n : unwrapWei(capability.policy.maxValue);
-  if (value > maxValue) fail("ES3808", "NativeValueLimitExceeded", "Transaction native value exceeds the signer capability limit.", { value: value.toString(), maxValue: maxValue.toString() });
+  const maxValue = policy.maxValue === undefined ? 0n : unwrapWei(policy.maxValue);
+  if (value > maxValue) fail("ES3808", "NativeValueLimitExceeded", "Transaction native value exceeds the signer policy limit.", { value: value.toString(), maxValue: maxValue.toString() });
 
   const selector = simulated.intent.data ? calldataSelector(simulated.intent.data) : undefined;
   if (selector) {
-    const allowed = capability.policy.allowedSelectors ?? [];
-    if (!allowed.some((item) => item.toLowerCase() === selector.toLowerCase())) fail("ES3809", "FunctionSelectorNotAuthorized", "Contract function selector is outside the signer capability allowlist.", { selector });
-  } else if (simulated.intent.to && !capability.policy.allowNativeTransfer) {
-    fail("ES3810", "NativeTransferNotAuthorized", "Plain native transfers are disabled by this signer capability.");
+    const allowed = policy.allowedSelectors ?? [];
+    if (!allowed.some((item) => item.toLowerCase() === selector.toLowerCase())) fail("ES3809", "FunctionSelectorNotAuthorized", "Contract function selector is outside the signer policy allowlist.", { selector });
+  } else if (simulated.intent.to && !policy.allowNativeTransfer) {
+    fail("ES3810", "NativeTransferNotAuthorized", "Plain native transfers are disabled by this signer policy.");
+  }
+}
+
+export function assertSignerCapability<C extends EvmChain>(capability: SignerCapability<C>, simulated: SimulatedTx<C>): void {
+  assertSignerPolicy(capability.chain, capability.policy, simulated);
+}
+
+export function assertTypedDataPolicy<C extends EvmChain, P extends string>(chain: C, policy: SignerPolicy<C>, envelope: TypedDataEnvelope<C, P>): void {
+  if (chain.id !== envelope.chain.id || policy.chain.id !== chain.id) fail("ES3104", "ChainMismatch", "Typed data and signer policy are bound to different chains.");
+  const allowedTypes = policy.allowedTypedDataPrimaryTypes ?? [];
+  if (!allowedTypes.includes(envelope.primaryType)) fail("ES3815", "TypedDataPrimaryTypeNotAuthorized", "EIP-712 primary type is outside the signer policy allowlist.", { primaryType: envelope.primaryType });
+  if (envelope.verifyingContract) {
+    const allowedContracts = policy.allowedTypedDataVerifyingContracts ?? [];
+    if (!allowedAddress(envelope.verifyingContract, allowedContracts)) fail("ES3816", "TypedDataContractNotAuthorized", "EIP-712 verifying contract is outside the signer policy allowlist.", { verifyingContract: envelope.verifyingContract });
+  } else if (!policy.allowUnboundTypedDataContract) {
+    fail("ES3817", "UnboundTypedDataNotAuthorized", "EIP-712 data without a verifying contract is disabled by this signer policy.");
   }
 }
 
@@ -89,7 +108,7 @@ function loadPrivateKey<C extends EvmChain>(ref: PrivateKeyRef<C>): Hex {
   return value as Hex;
 }
 
-function accountForCapability<C extends EvmChain>(capability: SignerCapability<C>, expectedFrom?: Address<C>) {
+export function accountForCapability<C extends EvmChain>(capability: SignerCapability<C>, expectedFrom?: Address<C>) {
   let account: ReturnType<typeof privateKeyToAccount>;
   try {
     account = privateKeyToAccount(loadPrivateKey(capability.secret));
@@ -123,16 +142,7 @@ export async function signSimulatedWithCapability<C extends EvmChain>(capability
 }
 
 export async function signTypedDataWithCapability<C extends EvmChain, P extends string>(capability: SignerCapability<C>, envelope: TypedDataEnvelope<C, P>): Promise<TypedSignature<C, P>> {
-  if (capability.chain.id !== envelope.chain.id) fail("ES3104", "ChainMismatch", "Typed data and signer capability are bound to different chains.");
-  const allowedTypes = capability.policy.allowedTypedDataPrimaryTypes ?? [];
-  if (!allowedTypes.includes(envelope.primaryType)) fail("ES3815", "TypedDataPrimaryTypeNotAuthorized", "EIP-712 primary type is outside the signer capability allowlist.", { primaryType: envelope.primaryType });
-  if (envelope.verifyingContract) {
-    const allowedContracts = capability.policy.allowedTypedDataVerifyingContracts ?? [];
-    if (!allowedAddress(envelope.verifyingContract, allowedContracts)) fail("ES3816", "TypedDataContractNotAuthorized", "EIP-712 verifying contract is outside the signer capability allowlist.", { verifyingContract: envelope.verifyingContract });
-  } else if (!capability.policy.allowUnboundTypedDataContract) {
-    fail("ES3817", "UnboundTypedDataNotAuthorized", "EIP-712 data without a verifying contract is disabled by this signer capability.");
-  }
-
+  assertTypedDataPolicy(capability.chain, capability.policy, envelope);
   const account = accountForCapability(capability);
   const signTypedData = account.signTypedData as unknown as (request: Record<string, unknown>) => Promise<Hex>;
   const signature = await signTypedData({ domain: envelope.domain, types: envelope.types, primaryType: envelope.primaryType, message: envelope.message });
