@@ -6,6 +6,7 @@ export * from "./erc4337.js";
 export * from "./events.js";
 export * from "./external-signer.js";
 export * from "./flashbots.js";
+export * from "./fork-verification.js";
 export * from "./fork.js";
 export * from "./merkle.js";
 export * from "./nonce.js";
