@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertRollupL1Finalized,
+  createArbitrumSettlementAdapter,
   createOpStackSettlementAdapter,
   defineEvmChainProfile,
   evmExecutionVerificationReport,
@@ -13,6 +14,7 @@ import {
   type RailgunPrivateBalanceReader,
 } from "../src/privacy/index.js";
 import {
+  Arbitrum,
   Base,
   Ethereum,
   address,
@@ -35,6 +37,10 @@ const L2_BLOCK_HASH = `0x${"22".repeat(32)}` as `0x${string}`;
 const L1_ORIGIN_HASH = `0x${"33".repeat(32)}` as `0x${string}`;
 const L1_FINALIZED_HASH = `0x${"44".repeat(32)}` as `0x${string}`;
 const OUTPUT_ROOT = `0x${"99".repeat(32)}` as `0x${string}`;
+const ARB_TX_HASH = `0x${"12".repeat(32)}` as `0x${string}`;
+const ARB_L2_BLOCK_HASH = `0x${"23".repeat(32)}` as `0x${string}`;
+const ARB_L1_BLOCK_HASH = `0x${"34".repeat(32)}` as `0x${string}`;
+const ARB_L1_TX_HASH = `0x${"45".repeat(32)}` as `0x${string}`;
 const TOKEN = `0x${"55".repeat(20)}` as `0x${string}`;
 
 test("OP Stack finality keeps L2 finality separate until rollup RPC proves finalized L1 derivation", async () => {
@@ -105,6 +111,67 @@ test("OP Stack finality keeps L2 finality separate until rollup RPC proves final
   const settledReport = evmExecutionVerificationReport(profile, finalizedL2, evidence);
   assert.equal(settledReport.state, "VERIFIED_FINALITY");
   assert.equal(settledReport.verifiedFinality, true);
+});
+
+test("Arbitrum confirmed assertion is not L1 finality until its parent-chain anchor is finalized", async () => {
+  const profile = defineEvmChainProfile({
+    id: "evm.arbitrum.mainnet-test",
+    name: "Arbitrum Test Profile",
+    family: "evm",
+    network: "mainnet",
+    nativeSymbol: "ETH",
+    chainId: 42161,
+    finality: { kind: "evm-rollup", l2Inclusion: true, l1Settlement: "supported" },
+    executionBackends: ["public-rpc"],
+    capabilities: {
+      eip1559: "supported", eip2930: "supported", eip4844: "unknown", eip7702: "unknown", erc4337: "supported",
+      debugTraceCall: "unknown", finalizedTag: "supported", safeTag: "supported", privateRpc: "unknown", bundleRpc: "unknown",
+    },
+  });
+  const from = address(`0x${"88".repeat(20)}`, Arbitrum);
+  const to = address(`0x${"99".repeat(20)}`, Arbitrum);
+  const draft = draftTransaction({ chain: Arbitrum, from, to });
+  const prepared = prepareTransaction(draft, {
+    nonce: nonce(Arbitrum, 2, "explicit"),
+    gas: gas(50_000n),
+    fees: { type: "eip1559", maxFeePerGas: maxFeePerGas(20n), maxPriorityFeePerGas: maxPriorityFeePerGas(1n) },
+  });
+  const simulated = recordSimulation(prepared, { status: "success", blockNumber: 350n, blockHash: ARB_L2_BLOCK_HASH, stateOverrides: false });
+  const signed = signSimulated(simulated, "0x01");
+  const broadcast = markBroadcast(signed, ARB_TX_HASH, 1_000);
+  const included = markIncluded(broadcast, { transactionHash: ARB_TX_HASH, blockHash: ARB_L2_BLOCK_HASH, blockNumber: 350n, status: "success", gasUsed: 42_000n });
+  const finalizedL2 = markFinalized(markConfirmed(included, 1));
+
+  const createReader = (l1Finalized: boolean) => ({
+    id: "arbitrum-sdk-latest-confirmed",
+    profileId: profile.id,
+    async readLatestConfirmed() {
+      return {
+        assertionId: "0xassertion-1234",
+        childBlockNumber: 350n,
+        childBlockHash: ARB_L2_BLOCK_HASH,
+        l1BlockNumber: 500n,
+        l1BlockHash: ARB_L1_BLOCK_HASH,
+        l1TransactionHash: ARB_L1_TX_HASH,
+        l1Finalized,
+      };
+    },
+  });
+
+  const provenAdapter = createArbitrumSettlementAdapter<typeof Arbitrum>({ profile, reader: createReader(false) });
+  const proven = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter: provenAdapter, nowMs: 3_000 });
+  assert.equal(proven.stage, "l1-proven");
+  const provenReport = evmExecutionVerificationReport(profile, finalizedL2, proven);
+  assert.equal(provenReport.state, "EXECUTION_OBSERVED");
+  assert.equal(provenReport.verifiedFinality, false);
+
+  const finalizedAdapter = createArbitrumSettlementAdapter<typeof Arbitrum>({ profile, reader: createReader(true) });
+  const finalized = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter: finalizedAdapter, nowMs: 4_000 });
+  assert.equal(assertRollupL1Finalized(finalized).l1Anchor.blockNumber, 500n);
+  assert.equal(finalized.proofReference, "arbitrum-confirmed-assertion:0xassertion-1234");
+  const finalizedReport = evmExecutionVerificationReport(profile, finalizedL2, finalized);
+  assert.equal(finalizedReport.state, "VERIFIED_FINALITY");
+  assert.equal(finalizedReport.verifiedFinality, true);
 });
 
 test("RAILGUN private-state evidence is derived from refreshed before/after balance snapshots", async () => {
