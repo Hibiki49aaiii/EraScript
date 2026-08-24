@@ -41,10 +41,16 @@ function rpcAction<A, R>(client: ViemClientLike, name: string): (args: A) => Pro
   return value.bind(client) as (args: A) => Promise<R>;
 }
 
-function wholeHex(value: unknown, label: string): string | undefined {
+function quantityHex(value: unknown, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]+$/.test(value)) fail("ES4061", "MalformedStateDiff", `${label} must be an RPC hexadecimal quantity.`);
+  return value.toLowerCase();
+}
+
+function byteHex(value: unknown, label: string): Hex | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(value)) fail("ES4061", "MalformedStateDiff", `${label} must be whole-byte 0x-prefixed hexadecimal.`);
-  return value.toLowerCase();
+  return value.toLowerCase() as Hex;
 }
 
 function normalizeStorage(value: unknown, address: string): Readonly<Record<string, string>> | undefined {
@@ -61,8 +67,8 @@ function normalizeStorage(value: unknown, address: string): Readonly<Record<stri
 function normalizeAccount(value: unknown, address: string): StateDiffAccount {
   if (typeof value !== "object" || value === null || Array.isArray(value)) fail("ES4061", "MalformedStateDiff", "State diff account must be an object.", { address });
   const record = value as Record<string, unknown>;
-  const balance = wholeHex(record.balance, `${address}.balance`);
-  const code = wholeHex(record.code, `${address}.code`);
+  const balance = quantityHex(record.balance, `${address}.balance`);
+  const code = byteHex(record.code, `${address}.code`);
   const nonce = record.nonce;
   if (nonce !== undefined && !(typeof nonce === "number" && Number.isSafeInteger(nonce) && nonce >= 0) && !(typeof nonce === "string" && /^0x[0-9a-fA-F]+$/.test(nonce))) {
     fail("ES4061", "MalformedStateDiff", "State diff nonce must be a non-negative safe integer or RPC hexadecimal quantity.", { address });
@@ -71,7 +77,7 @@ function normalizeAccount(value: unknown, address: string): StateDiffAccount {
   return {
     ...(balance !== undefined ? { balance } : {}),
     ...(nonce !== undefined ? { nonce: typeof nonce === "string" ? nonce.toLowerCase() : nonce } : {}),
-    ...(code !== undefined ? { code: code as Hex } : {}),
+    ...(code !== undefined ? { code } : {}),
     ...(storage !== undefined ? { storage } : {}),
   };
 }
