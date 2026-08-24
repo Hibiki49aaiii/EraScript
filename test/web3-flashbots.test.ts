@@ -46,10 +46,10 @@ function mockRelay(): FlashbotsRelay {
             { txHash: `0x${"11".repeat(32)}`, gasUsed: 21_000 },
             { txHash: `0x${"22".repeat(32)}`, gasUsed: 21_000 },
           ],
-        } as Result;
+        } as unknown as Result;
       }
       if (method === "eth_sendBundle") {
-        return { bundleHash: `0x${"bb".repeat(32)}` } as Result;
+        return { bundleHash: `0x${"bb".repeat(32)}` } as unknown as Result;
       }
       throw new Error(`unexpected method ${method}`);
     },
