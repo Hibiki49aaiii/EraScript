@@ -8,18 +8,19 @@ EraScript does not replace Node.js. It compiles to ordinary JavaScript, keeps np
 
 ## Why EraScript
 
-A syntactically correct Node.js Web3 script can still use the wrong chain, corrupt a proof, mix token units, sign an unintended authorization, submit stale execution data, omit a recovery transaction, or treat a transaction/hash as success.
+A syntactically correct Web3 script can still use the wrong chain, corrupt a proof, mix units, sign an unintended payload, submit stale execution data, omit a recovery step, or treat an ID/hash as success.
 
-EraScript moves those assumptions into machine-checkable types, policies, evidence objects, capability profiles, and state transitions.
+EraScript moves those assumptions into machine-checkable types, capability profiles, policies, evidence objects, and state transitions.
 
-Normative/current design documents:
+Design/implementation documents:
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
+- [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
-EraScript no longer treats Flashbots or Ethereum as the universal execution model.
+EraScript does not treat Ethereum or Flashbots as the universal Web3 model.
 
 ```text
 EraScript Core
@@ -33,20 +34,18 @@ EraScript Core
   |     +-- public/private RPC
   |     +-- Flashbots
   |     +-- Jito
-  |     +-- Sui RPC
+  |     +-- Sui Core API
   |     +-- custom provider
   |
   +-- Protocol Overlay
         +-- RAILGUN
 ```
 
-Flashbots is an optional EVM execution backend. Jito is an optional Solana execution backend. RAILGUN is an EVM privacy overlay whose consensus/finality remains that of the underlying EVM chain.
+Flashbots is an optional EVM backend. Jito is an optional Solana backend. RAILGUN is an EVM privacy overlay whose consensus/finality remains that of its base EVM chain.
 
 ### Reliable EVM compatibility
 
-EraScript targets generic EVM compatibility without assuming every EVM chain exposes identical RPC, fee, finality, debug, AA, sequencer, private-RPC, or bundle behavior.
-
-Unknown/custom EVM networks begin with optional capabilities set to `unknown`:
+EraScript targets generic EVM compatibility without pretending all EVM networks expose identical RPC, fee, finality, debug, account-abstraction, sequencer, private-RPC, or bundle behavior.
 
 ```ts
 const chain = genericEvmProfile({
@@ -60,75 +59,100 @@ chain.capabilities.eip7702   // unknown
 chain.capabilities.bundleRpc // unknown
 ```
 
-A feature must be explicitly configured or discovered before EraScript relies on it.
+Optional features start as `unknown` unless configured or proven. `discoverEvmCapabilities()` can currently gather evidence for EIP-1559/block shape, EIP-4844 block fields, safe/finalized block tags, and `debug_traceCall` while preserving ambiguity when a provider error is not proof of protocol non-support.
 
-### Solana foundation
+### Solana
 
-Current primitives include:
+Current primitives/adapters include:
 
 - `SolanaAddress`
 - `SolanaBlockhash`
 - `SolanaTransactionSignature`
 - `Lamports`
-- `processed / confirmed / finalized` commitments
-- recent blockhash + `lastValidBlockHeight` freshness evidence
-- legacy/v0 transaction profile
-- Jito backend capability
+- `processed / confirmed / finalized`
+- recent blockhash + `lastValidBlockHeight`
+- legacy/v0 serialized transactions
+- `@solana/kit`-compatible structural RPC adapter
+- signature-verified simulation
+- submission/status/finality evidence
+- Jito bundle adapter
 
-A stale blockhash is rejected before signing/submission.
+A blockhash is checked before simulation and again before submission. A transaction signature is not success; finality requires a successful status at `finalized` commitment.
 
-### Sui foundation
+### Jito
 
-Current primitives include:
+Jito is kept separate from normal Solana RPC.
+
+```text
+bundle draft
+  -> sendBundle
+  -> bundle ID
+  -> inflight/status evidence
+  -> exact transaction-set verification
+  -> finalized Solana commitment
+```
+
+A bundle ID or `Landed` result alone is not treated as final success.
+
+### Sui
+
+Current primitives/adapters include:
 
 - `SuiAddress`
 - `SuiObjectId`
 - `SuiObjectRef { objectId, version, digest }`
 - `SuiTransactionDigest`
 - `Mist`
-- transaction-effects evidence
-- sponsored transaction capability
-- effects/checkpoint finality model
+- sender/gas-owner binding
+- `@mysten/sui` v2 Core-API-compatible structural adapter
+- checks-enabled simulation
+- `Transaction` vs `FailedTransaction` discrimination
+- transaction effects
+- digest continuity
+- checkpoint evidence
 
-Sui sender/gas-owner semantics are not represented as EVM funding transactions.
+A resolved `executeTransaction()` Promise is not success by itself. `checksEnabled=false` simulation is inspection-only and cannot pass the execution gate.
 
-### RAILGUN foundation
+### RAILGUN
 
-RAILGUN private execution has its own evidence lifecycle:
+RAILGUN is a privacy overlay, not a new consensus chain.
 
 ```text
 PrivateIntent
   -> GasEstimated
-  -> BroadcasterFeeQuoted (broadcaster flow)
-  -> ProofGenerated
-  -> Populated
-  -> BroadcasterSubmitted | SelfSubmitted
-  -> underlying EVM inclusion/finality
-  -> private-state verification
+  -> BroadcasterFeeQuoted
+  -> Wallet SDK ProofGenerated
+  -> ProvedTransactionPopulated
+  -> Waku BroadcasterSubmitted | SelfSubmitted
+  -> Base EVM inclusion/finality
+  -> PrivateStateVerified
 ```
 
-Proof evidence is bound to transfer details, gas evidence, broadcaster fee details and expiry. A proof tied to an expired broadcaster quote is rejected instead of silently reused.
+Current adapters cover the Wallet SDK gas/proof/populate lifecycle and Waku Broadcaster selection/submission. Proof evidence is bound to transfer details, gas, selected Broadcaster/fees ID, fee token/amount/recipient, and quote expiry.
 
-## Current EVM/Web3 foundation
+A proof tied to an expired quote is rejected. A proof generated for one Broadcaster/fees ID cannot silently be submitted through another.
 
-### Web3 values and calldata
+`VERIFIED_FINALITY` for RAILGUN requires both finalized base-EVM execution and proof-bound private-state assertions; base-chain inclusion alone does not prove expected shielded wallet state.
 
-Current primitives include:
+## EVM/Web3 safety foundation
 
-- `Address<Chain>` with EVM address/checksum validation
-- Ethereum, BNB Chain, Base, and Arbitrum chain identities
-- strict `Bytes32`
-- `Hash`, `TransactionHash`, `BlockHash`, `MerkleRoot`, `MerkleLeaf`, `MerkleProof`
-- typed `Calldata`
-- ABI function/argument encode and decode via viem
-- safe 4-byte selector removal for captured calldata
-- `Wei`, `Ether`, `Gas`, fee types, and exact `TokenAmount<Token>`
-- ERC-2612 Permit and Permit2 authorization envelopes
-- Permit2 WitnessTransfer safety profile
-- ABI-defined Merkle schemes and proof verification
-- AI-readable diagnostics
+Current EVM primitives include:
 
-A malformed 63-digit proof node is rejected instead of silently padded:
+- `Address<Chain>` with checksum validation
+- strict `Bytes32`, typed hashes/calldata
+- ABI encode/decode and captured-calldata decoding
+- exact `Wei`, `Ether`, `Gas`, fee and `TokenAmount<Token>` types
+- ERC-2612 / Permit2 / WitnessTransfer safety profile
+- ABI-defined Merkle schemes
+- EIP-712
+- EIP-7702
+- Safe + Safe Transaction Service evidence
+- ERC-4337 + Bundler + Paymaster lifecycle
+- state-diff and fork simulation
+- rescue DAG/final-state invariants
+- unsafe-boundary audit trail
+
+A malformed proof node is rejected rather than silently repaired:
 
 ```text
 ES3201 InvalidBytes32
@@ -138,7 +162,7 @@ Suggestion: A leading zero may be missing. Verify the source value before paddin
 
 ## Transaction evidence instead of `send()`
 
-EVM example:
+EVM:
 
 ```text
 DraftTx
@@ -151,74 +175,30 @@ DraftTx
   -> FinalizedTx
 ```
 
-EraScript records or checks nonce provenance, gas and fees, block-anchored simulation, replacements, reverted receipts, canonical block hashes, confirmations, and finalized state.
-
-A transaction hash is **not** success. The same principle applies to Solana signatures, Sui digests, SafeTx hashes, UserOperation hashes, bundle IDs, and RAILGUN submission IDs.
+The same principle is applied with family-specific evidence to Solana signatures, Jito bundle IDs, Sui digests/effects, SafeTx hashes, UserOperation hashes, and RAILGUN submission IDs.
 
 ## AI-safe signing
 
-Generated EVM code can reference a key without receiving its raw value:
+EVM generated code can reference a key without exposing the raw secret, and signer policies can restrict destination, selector, value, simulation assumptions, typed data and EIP-7702 behavior.
 
-```era
-const victimKey = privateKeyEnv(
-  "VICTIM_PRIVATE_KEY",
-  Ethereum,
-  victimAddress,
-)
-```
+The EVM external signer path additionally parses the returned raw transaction, recovers its signer cryptographically, and compares chainId/type/nonce/gas/to/value/data/fees/EIP-7702 authorization list against the approved request before accepting it.
 
-`SignerPolicy` can restrict chain, signer, destination, selector, value, simulation assumptions, typed data and EIP-7702 behavior.
+v0.6 also adds a family-aware external signing envelope containing:
 
-For stronger isolation, `ExternalSigner` separates the AI/code-generation process from the secret-bearing signer process.
+- chain family/profile/network
+- signer role/identity
+- exact payload + encoding
+- payload hash
+- semantic context hash
+- request ID
+- random challenge
+- TTL
 
-Static analysis rejects common direct secret patterns such as `process.env.PRIVATE_KEY` and hardcoded private keys.
+The actual cryptographic verification remains family-specific. EraScript does not pretend EVM secp256k1, Solana Ed25519 and Sui signatures are one format.
 
-## EIP-7702 / Safe / ERC-4337
+## Verification reports
 
-EraScript currently includes:
-
-- chain-bound EIP-7702 authorization lifecycle
-- replayable/clear-delegation default-deny policy
-- authorization-list transaction integration
-- SafeTxHash lifecycle and Safe Transaction Service coordination evidence
-- ERC-4337 UserOperation lifecycle
-- Bundler evidence
-- Paymaster stub/final lifecycle
-- EntryPoint execution/finality evidence
-
-These remain EVM-family modules and are not forced onto Solana or Sui.
-
-## Flashbots and Jito
-
-Flashbots bundles are modeled as EVM provider-specific target-bound evidence. Changing target block forces re-simulation.
-
-Jito is modeled separately for Solana. Bundle support must never be inferred merely because a chain is Solana, just as Flashbots support must never be inferred merely because a chain is EVM.
-
-## Rescue DAG, fork simulation, and final-state invariants
-
-EVM rescue operations can be modeled as a transaction DAG:
-
-```text
-fund
-  -> claim
-  -> token-rescue
-  -> native-sweep
-```
-
-EraScript includes:
-
-- missing rescue/sweep detection
-- nonce/dependency validation
-- block-anchored RPC simulation
-- `debug_traceCall` state-diff evidence
-- fork sequence execution
-- final-state balance invariants
-- Flashbots exact-order verification
-- unsafe-boundary audit trail
-
-The same invariant concept is intended to be family-neutral, while state acquisition/execution evidence stays family-specific.
-
-## Verification states
+Legacy EVM rescue reports retain:
 
 ```text
 NOT_READY
@@ -227,13 +207,23 @@ RECOVERY_OBSERVED
 VERIFIED_RECOVERY
 ```
 
-`VERIFIED_RECOVERY` is reserved for a recovery whose final-state invariants are satisfied with the configured chain-family finality evidence.
+v0.6 family-neutral reports use:
 
-Verification reports contain a deterministic `reportHash`. The CLI recomputes this hash before trusting a report.
+```text
+NOT_READY
+READY_FOR_SUBMISSION
+EXECUTION_OBSERVED
+VERIFIED_FINALITY
+```
+
+A multichain report binds chain family, profile, network, execution backend, optional overlay, subject, checks, evidence hashes and state into a deterministic SHA-256 `reportHash`.
+
+`era verify` auto-detects both report formats:
 
 ```bash
-era verify report.json
-era verify report.json --require VERIFIED_RECOVERY --json
+era verify rescue-report.json --require VERIFIED_RECOVERY
+era verify solana-report.json --require VERIFIED_FINALITY
+era verify sui-report.json --require VERIFIED_FINALITY
 era verify report.json --integrity-only
 ```
 
@@ -241,20 +231,18 @@ era verify report.json --integrity-only
 
 ```text
 User intent
-  -> AI declares chain family/profile
+  -> AI declares chain family/profile/backend
   -> AI generates .era
   -> era check --json
-  -> AI repairs diagnostics
-  -> chain-specific proof/ABI/object/instruction checks
-  -> chain-specific preparation + simulation
-  -> signer/sponsor/proof policy
-  -> execution-backend gate
-  -> READY_FOR_BROADCAST
-  -> execution
-  -> chain-specific effects/receipt/state verification
-  -> RECOVERY_OBSERVED
+  -> AI repairs structured diagnostics
+  -> family-specific preparation/proof/simulation
+  -> signer/sponsor/privacy policy
+  -> READY_FOR_SUBMISSION / READY_FOR_BROADCAST
+  -> execution backend
+  -> family-specific receipt/effects/status/private-state evidence
+  -> EXECUTION_OBSERVED / RECOVERY_OBSERVED
   -> family-specific finality
-  -> VERIFIED_RECOVERY
+  -> VERIFIED_FINALITY / VERIFIED_RECOVERY
 ```
 
 ## CLI
@@ -268,7 +256,7 @@ era run app.era
 era check app.era
 era check app.era --json
 era verify report.json
-era verify report.json --require VERIFIED_RECOVERY --json
+era verify report.json --require VERIFIED_FINALITY --json
 era transpile app.era
 era init my-app
 era --version
@@ -276,26 +264,18 @@ era --version
 
 ## Node.js / TypeScript compatibility
 
-Ordinary TypeScript remains valid EraScript and normal npm packages remain usable. Chain adapters will target the ecosystem's native TypeScript SDKs rather than reimplementing networking/cryptography unnecessarily.
+Ordinary TypeScript remains valid EraScript and normal npm packages remain usable. EraScript adapters target each ecosystem's native TypeScript SDK instead of unnecessarily reimplementing networking and cryptography.
 
-Current/planned adapter direction:
+Current adapter direction:
 
 ```text
 EVM      -> viem
-Solana   -> @solana/kit
-Sui      -> @mysten/sui
-RAILGUN  -> @railgun-community/wallet + shared models/broadcaster client
+Solana   -> @solana/kit-compatible client
+Sui      -> @mysten/sui v2-compatible client
+RAILGUN  -> RAILGUN Wallet SDK + Waku Broadcaster
 ```
 
-EraScript v0.1 syntax sugar remains available:
-
-| EraScript | TypeScript meaning |
-|---|---|
-| `fn name()` | `function name()` |
-| `pub fn name()` | `export function name()` |
-| `mut x = 1` | `let x = 1` |
-| `fn f() -> T` | `function f(): T` |
-| `T?` | `T | null | undefined` in supported annotations |
+The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packages are not forced into EraScript core as hard runtime dependencies.
 
 ## Roadmap
 
@@ -303,61 +283,66 @@ EraScript v0.1 syntax sugar remains available:
 - [x] Node.js/npm/TypeScript compatibility
 - [x] address/chain/hash/bytes32/calldata types
 - [x] ABI encode/decode and captured-calldata decoding
-- [x] static Web3 literal diagnostics
-- [x] `era check --json`
+- [x] static Web3 diagnostics / `era check --json`
 
 ### v0.3 — transaction correctness
-- [x] exact native value / gas / fee types
+- [x] exact value/gas/fee types
 - [x] nonce provenance
-- [x] transaction lifecycle and simulation evidence
-- [x] receipt/replacement/confirmation/finality model
-- [x] strict event decoding
-- [x] EIP-712 envelopes
+- [x] transaction lifecycle/simulation/receipt/replacement/finality
+- [x] strict events / EIP-712
 
-### v0.4 — authorization and private execution
-- [x] viem RPC evidence adapter
-- [x] signer capabilities and secret references
-- [x] external signer boundary
-- [x] `TokenAmount`
-- [x] ERC-2612 / Permit2 / WitnessTransfer safety profile
-- [x] Merkle scheme profiles and proof verification
-- [x] Flashbots target/state binding and re-simulation
-- [x] unsafe-boundary audit trail
+### v0.4 — authorization/private execution
+- [x] viem RPC evidence
+- [x] secret/signer capabilities
+- [x] EVM external signer
+- [x] TokenAmount / Permit / Permit2 / WitnessTransfer
+- [x] Merkle proof profiles
+- [x] Flashbots re-simulation binding
+- [x] unsafe-boundary audit
 
-### v0.5 — rescue and account verification
+### v0.5 — rescue/account verification
 - [x] rescue transaction DAG
 - [x] final-state invariants
-- [x] block-anchored balance snapshots
-- [x] verification report hashing / `era verify`
+- [x] state snapshots/fork/state-diff
+- [x] `era verify`
 - [x] EIP-7702
-- [x] Safe lifecycle + Transaction Service evidence
-- [x] ERC-4337 UserOperation / Bundler / Paymaster types
-- [x] fork/state-diff simulation adapters
+- [x] Safe / Transaction Service
+- [x] ERC-4337 / Bundler / Paymaster
 
-### v0.6 — multi-chain foundation
-- [x] chain-family capability model
-- [x] generic EVM profile with unknown-by-default optional capabilities
-- [x] execution backend abstraction
-- [x] Solana typed primitives and blockhash-expiry evidence
-- [x] Sui typed primitives/object references/effects foundation
-- [x] RAILGUN overlay and proof/fee lifecycle foundation
-- [ ] EVM runtime capability discovery/override profiles
-- [ ] `@solana/kit` transaction adapter
-- [ ] Jito simulation/submission/finality adapter
-- [ ] `@mysten/sui` PTB/sponsorship/effects adapter
-- [ ] RAILGUN Wallet SDK + Waku Broadcaster adapter
-- [ ] family-neutral verification report envelope
-- [ ] family-aware external signer protocol
+### v0.6 — multi-chain runtime
+- [x] chain-family/capability model
+- [x] generic unknown-by-default EVM profiles
+- [x] EVM runtime capability discovery
+- [x] Solana native primitives
+- [x] `@solana/kit`-compatible RPC adapter
+- [x] Jito bundle/status/finality adapter
+- [x] Sui native primitives/object refs/effects
+- [x] `@mysten/sui` v2-compatible simulation/execution/checkpoint adapter
+- [x] RAILGUN overlay/proof/fee lifecycle
+- [x] RAILGUN Wallet SDK adapter
+- [x] Waku Broadcaster adapter
+- [x] family-aware external signing envelope
+- [x] family-neutral verification report
+- [x] `era verify` multichain report support
+- [ ] Solana unsigned-message/multi-signer signature injection verifier
+- [ ] Solana durable nonce + ALT lifecycle evidence
+- [ ] Sui sponsored-transaction policy/signature-role verifier
+- [ ] automatic RAILGUN private-state reader/indexer evidence
+- [ ] rollup L2 inclusion -> L1 settlement adapters
+- [ ] real-network SDK integration test matrix
 
 ## Design documents
 
-- [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md) — EVM/Web3 specification
-- [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md) — EVM/Solana/Sui/RAILGUN architecture
-- [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md) — AI-first safety principles
-- [`docs/V03_IMPLEMENTATION.md`](docs/V03_IMPLEMENTATION.md) — transaction correctness
-- [`docs/V04_IMPLEMENTATION.md`](docs/V04_IMPLEMENTATION.md) — RPC evidence/private execution
-- [`docs/V05_IMPLEMENTATION.md`](docs/V05_IMPLEMENTATION.md) — rescue/account verification
+- [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
+- [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
+- [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md)
+- [`docs/V03_IMPLEMENTATION.md`](docs/V03_IMPLEMENTATION.md)
+- [`docs/V04_IMPLEMENTATION.md`](docs/V04_IMPLEMENTATION.md)
+- [`docs/V05_IMPLEMENTATION.md`](docs/V05_IMPLEMENTATION.md)
+- [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
 
 ## Status
 
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
+
+The current environment has not yet produced a full dependency-backed CI pass for the entire v0.6 tree, so v0.6 remains experimental until the real SDK integration matrix is green.
