@@ -49,7 +49,7 @@ function processEnvName(node: ts.Node): string | undefined {
   if (ts.isElementAccessExpression(node)) {
     const parent = node.expression;
     const key = literalValue(node.argumentExpression);
-    if (key && ts.isPropertyAccessExpression(parent) && ts.isIdentifier(parent.expression) && parent.name.text === "process" && parent.name.text === "env") return key;
+    if (key && ts.isPropertyAccessExpression(parent) && ts.isIdentifier(parent.expression) && parent.expression.text === "process" && parent.name.text === "env") return key;
   }
   return undefined;
 }
@@ -66,7 +66,7 @@ function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpressio
 
   if (!reasonNode || reason === undefined) {
     diagnostics.push({
-      code: "ES3901",
+      code: "ES4081",
       severity: "error",
       kind: "UnsafeBoundaryReasonMustBeLiteral",
       message: "unsafeBoundary requires a static string-literal reason so AI and reviewers can audit why verification was bypassed.",
@@ -79,7 +79,7 @@ function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpressio
   const normalized = reason.trim();
   if (normalized.length < 12) {
     diagnostics.push({
-      code: "ES3902",
+      code: "ES4082",
       severity: "error",
       kind: "UnsafeBoundaryReasonTooShort",
       message: "Unsafe boundary reason is too vague to audit.",
@@ -91,7 +91,7 @@ function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpressio
   }
   if (normalized.length > 240) {
     diagnostics.push({
-      code: "ES3904",
+      code: "ES4084",
       severity: "error",
       kind: "UnsafeBoundaryReasonTooLong",
       message: "Unsafe boundary reason must remain concise enough to audit.",
@@ -102,7 +102,7 @@ function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpressio
   }
   if (!operation || (!ts.isArrowFunction(operation) && !ts.isFunctionExpression(operation))) {
     diagnostics.push({
-      code: "ES3903",
+      code: "ES4083",
       severity: "error",
       kind: "InvalidUnsafeBoundaryOperation",
       message: "unsafeBoundary requires an inline arrow/function callback so the bypass scope is structurally visible.",
@@ -120,7 +120,7 @@ function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpressio
   };
   unsafeBoundaries.push(audit);
   diagnostics.push({
-    code: "ES3900",
+    code: "ES4080",
     severity: "warning",
     kind: "UnsafeBoundary",
     message: `Verification guarantees are explicitly suspended inside this boundary: ${normalized}`,
