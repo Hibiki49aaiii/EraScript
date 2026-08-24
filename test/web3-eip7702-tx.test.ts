@@ -19,6 +19,7 @@ import {
   signEip7702WithCapability,
   signerCapability,
   simulatePreparedWithRpc,
+  weiPerGas,
   type SignedEip7702Authorization,
 } from "../src/web3/index.js";
 
@@ -72,7 +73,7 @@ test("EIP-7702 transaction preparation enforces type-4 structural rules", async 
     () => prepareTransaction(draft, {
       nonce: nonce(Ethereum, 7, "explicit"),
       gas: gas(50_000n),
-      fees: { type: "legacy", gasPrice: maxFeePerGas(1n) as never },
+      fees: { type: "legacy", gasPrice: weiPerGas(1n) },
     }),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4113",
   );
