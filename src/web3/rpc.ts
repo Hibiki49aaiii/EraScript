@@ -2,6 +2,7 @@ import type { Hex } from "viem";
 import { EraDiagnosticError } from "../diagnostics.js";
 import { nonce, type Nonce, type NonceSource } from "./nonce.js";
 import {
+  authorizationListForViem,
   markBroadcast,
   markConfirmed,
   markFinalized,
@@ -22,6 +23,7 @@ import {
   type SignedTx,
   type SimulationFailedTx,
   type SimulatedTx,
+  type ViemEip7702Authorization,
 } from "./tx.js";
 import { blockHash, transactionHash, type Address, type EvmChain } from "./types.js";
 import { gas, maxFeePerGas, maxPriorityFeePerGas, unwrapGas, unwrapWei, weiPerGas } from "./values.js";
@@ -81,12 +83,20 @@ export async function readNonceFromRpc<C extends EvmChain, S extends RpcNonceSou
 export async function estimateGasFromRpc<C extends EvmChain>(client: ViemClientLike, draft: DraftTx<C>): Promise<ReturnType<typeof gas>> {
   assertRpcChain(client, draft.intent.chain);
   if (!draft.intent.from) fail("ES3702", "MissingTransactionSender", "RPC gas estimation requires an explicit transaction sender.");
-  const estimate = action<{ account: Hex; to?: Hex; value?: bigint; data?: Hex }, bigint>(client, "estimateGas");
+  const estimate = action<{
+    account: Hex;
+    to?: Hex;
+    value?: bigint;
+    data?: Hex;
+    authorizationList?: readonly ViemEip7702Authorization<C>[];
+  }, bigint>(client, "estimateGas");
+  const authorizationList = authorizationListForViem(draft.intent);
   return gas(await estimate({
     account: draft.intent.from,
     ...(draft.intent.to ? { to: draft.intent.to } : {}),
     ...(draft.intent.value !== undefined ? { value: unwrapWei(draft.intent.value) } : {}),
     ...(draft.intent.data !== undefined ? { data: draft.intent.data as Hex } : {}),
+    ...(authorizationList ? { authorizationList } : {}),
   }));
 }
 
@@ -103,10 +113,12 @@ export async function estimateFeeModelFromRpc<C extends EvmChain>(client: ViemCl
 
 export async function prepareDraftWithRpc<C extends EvmChain>(client: ViemClientLike, draft: DraftTx<C>, options: { nonceSource?: RpcNonceSource; feePreference?: RpcFeePreference } = {}): Promise<PreparedTx<C>> {
   if (!draft.intent.from) fail("ES3702", "MissingTransactionSender", "RPC transaction preparation requires an explicit sender.");
+  const feePreference = options.feePreference ?? (draft.intent.authorizationList ? "eip1559" : "auto");
+  if (draft.intent.authorizationList && feePreference === "legacy") fail("ES4113", "InvalidEip7702FeeModel", "EIP-7702 transaction preparation cannot request legacy gas pricing.");
   const [txNonce, txGas, fees] = await Promise.all([
     readNonceFromRpc(client, draft.intent.chain, draft.intent.from, options.nonceSource ?? "pending"),
     estimateGasFromRpc(client, draft),
-    estimateFeeModelFromRpc(client, draft.intent.chain, options.feePreference ?? "auto"),
+    estimateFeeModelFromRpc(client, draft.intent.chain, feePreference),
   ]);
   return prepareTransaction(draft, { nonce: txNonce, gas: txGas, fees });
 }
@@ -118,7 +130,17 @@ export async function simulatePreparedWithRpc<C extends EvmChain>(client: ViemCl
   try {
     anchor = await action<{ blockTag: SimulationBlockTag }, RpcBlock>(client, "getBlock")({ blockTag });
     if (anchor.number === null || anchor.hash === null) fail("ES3704", "UnanchoredSimulation", "Simulation block could not be anchored to a concrete number and hash.", { blockTag });
-    const call = action<{ account?: Hex; to?: Hex; value?: bigint; data?: Hex; gas?: bigint; blockNumber: bigint; stateOverride?: unknown }, { data?: Hex }>(client, "call");
+    const call = action<{
+      account?: Hex;
+      to?: Hex;
+      value?: bigint;
+      data?: Hex;
+      gas?: bigint;
+      blockNumber: bigint;
+      stateOverride?: unknown;
+      authorizationList?: readonly ViemEip7702Authorization<C>[];
+    }, { data?: Hex }>(client, "call");
+    const authorizationList = authorizationListForViem(prepared.intent);
     const result = await call({
       ...(prepared.intent.from ? { account: prepared.intent.from as Hex } : {}),
       ...(prepared.intent.to ? { to: prepared.intent.to as Hex } : {}),
@@ -126,6 +148,7 @@ export async function simulatePreparedWithRpc<C extends EvmChain>(client: ViemCl
       ...(prepared.intent.data !== undefined ? { data: prepared.intent.data as Hex } : {}),
       gas: unwrapGas(prepared.gas),
       blockNumber: anchor.number,
+      ...(authorizationList ? { authorizationList } : {}),
       ...(options.stateOverride !== undefined ? { stateOverride: options.stateOverride } : {}),
     });
     return recordSimulation(prepared, {
