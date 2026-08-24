@@ -14,4 +14,5 @@ export * from "./tx.js";
 export * from "./typed-data.js";
 export * from "./types.js";
 export * from "./values.js";
+export * from "./verification.js";
 export * from "./workflow.js";
