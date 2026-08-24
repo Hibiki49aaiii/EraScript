@@ -32,7 +32,6 @@ export interface SolanaTransactionInspection {
   readonly recentBlockhash: SolanaBlockhash;
   readonly signerCount?: number;
 }
-
 export type SolanaTransactionInspector = (serializedTransaction: Uint8Array) => SolanaTransactionInspection | Promise<SolanaTransactionInspection>;
 
 export interface SolanaPreparedTransaction {
@@ -44,13 +43,10 @@ export interface SolanaPreparedTransaction {
   readonly recentBlockhash: SolanaRecentBlockhashEvidence;
   readonly inspectionVerified: false;
 }
-
 export interface SolanaVerifiedPreparedTransaction extends Omit<SolanaPreparedTransaction, "inspectionVerified"> {
   readonly inspectionVerified: true;
   readonly inspection: SolanaTransactionInspection;
 }
-
-/** Created only after the verified signature set has been assembled and the final wire transaction re-inspected. */
 export interface SolanaExecutionReadyTransaction extends SolanaVerifiedPreparedTransaction {
   readonly signatureAssemblyVerified: true;
   readonly signatureEvidenceHash: string;
@@ -67,7 +63,6 @@ export interface SolanaPreSignSimulationEvidence {
   readonly unitsConsumed?: bigint;
   readonly simulatedAtBlockHeight: bigint;
 }
-
 export interface SolanaSimulationEvidence {
   readonly state: "solana-simulated";
   readonly transaction: SolanaExecutionReadyTransaction;
@@ -174,20 +169,18 @@ async function simulateWire(client: SolanaKitClientLike, transaction: SolanaVeri
   return { success, ...(success ? {} : { err: value.err }), logs, ...(unitsConsumed !== undefined ? { unitsConsumed } : {}), simulatedAtBlockHeight: currentHeight };
 }
 
-/** Logic/preflight simulation before signatures are complete. This can never authorize submission. */
 export async function simulateSolanaPreSignTransaction(client: SolanaKitClientLike, transaction: SolanaVerifiedPreparedTransaction, commitment: SolanaCommitment = "confirmed"): Promise<SolanaPreSignSimulationEvidence> {
   const result = await simulateWire(client, transaction, commitment, false);
   return { state: "solana-pre-sign-simulated", transaction, commitment, signatureVerification: false, ...result };
 }
 
-/** Execution-ready simulation after all required signatures are assembled and the final wire bytes are re-inspected. */
 export async function simulateSolanaTransaction(client: SolanaKitClientLike, transaction: SolanaExecutionReadyTransaction, commitment: SolanaCommitment = "confirmed"): Promise<SolanaSimulationEvidence> {
   const result = await simulateWire(client, transaction, commitment, true);
   return { state: "solana-simulated", transaction, commitment, signatureVerification: true, ...result };
 }
 
 export async function submitSolanaTransaction(client: SolanaKitClientLike, simulation: SolanaSimulationEvidence & { readonly success: true }): Promise<SolanaSubmittedTransaction> {
-  if (!simulation.signatureVerification || !simulation.transaction.signatureAssemblyVerified) fail("ES4466", "SolanaSignatureVerificationRequired", "Solana submission requires signature-verified simulation of an assembly-verified final wire transaction.");
+  if (!simulation.signatureVerification || !simulation.transaction.signatureAssemblyVerified) fail("ES4635", "SolanaSignatureVerificationRequired", "Solana submission requires signature-verified simulation of an assembly-verified final wire transaction.");
   const getBlockHeight = rpcMethod(client, "getBlockHeight") as (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   const height = integer(responseValue(await getBlockHeight({ commitment: simulation.commitment }).send()), "blockHeight");
   assertSolanaBlockhashFresh(simulation.transaction.recentBlockhash, height);
@@ -212,7 +205,7 @@ export async function readSolanaSignatureStatus(client: SolanaKitClientLike, sig
 
 export function assertSolanaFinalized(status: SolanaSignatureStatusEvidence): SolanaSignatureStatusEvidence & { readonly found: true; readonly confirmationStatus: "finalized" } {
   if (!status.found) fail("ES4465", "SolanaTransactionNotFound", "Solana transaction signature is not present in RPC history.", { signature: status.signature });
-  if (status.err !== undefined) fail("ES4467", "SolanaTransactionFailed", "Solana transaction executed with an error.", { signature: status.signature, err: status.err });
-  if (status.confirmationStatus !== "finalized") fail("ES4468", "SolanaTransactionNotFinalized", "Solana transaction has not reached finalized commitment.", { signature: status.signature, confirmationStatus: status.confirmationStatus ?? null });
+  if (status.err !== undefined) fail("ES4466", "SolanaTransactionFailed", "Solana transaction executed with an error.", { signature: status.signature, err: status.err });
+  if (status.confirmationStatus !== "finalized") fail("ES4467", "SolanaTransactionNotFinalized", "Solana transaction has not reached finalized commitment.", { signature: status.signature, confirmationStatus: status.confirmationStatus ?? null });
   return status as SolanaSignatureStatusEvidence & { readonly found: true; readonly confirmationStatus: "finalized" };
 }
