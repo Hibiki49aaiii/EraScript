@@ -2,7 +2,12 @@ import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { PrivateKeyRef } from "./secrets.js";
-import { signSimulated, type SignedTx, type SimulatedTx } from "./tx.js";
+import {
+  authorizationListForViem,
+  signSimulated,
+  type SignedTx,
+  type SimulatedTx,
+} from "./tx.js";
 import { typedSignature, type TypedDataEnvelope, type TypedSignature } from "./typed-data.js";
 import type { Address, EvmChain } from "./types.js";
 import { unwrapGas, unwrapWei, type Wei } from "./values.js";
@@ -21,6 +26,7 @@ export interface SignerPolicy<C extends EvmChain = EvmChain> {
   readonly allowedTypedDataPrimaryTypes?: readonly string[];
   readonly allowedTypedDataVerifyingContracts?: readonly Address<C>[];
   readonly allowUnboundTypedDataContract?: boolean;
+  readonly allowEip7702Transactions?: boolean;
   readonly allowedEip7702Delegates?: readonly Address<C>[];
   readonly allowEip7702ClearDelegation?: boolean;
   readonly allowReplayableEip7702Authorization?: boolean;
@@ -61,6 +67,25 @@ function calldataSelector(data: string): FunctionSelector | undefined {
   return functionSelector(data.slice(0, 10));
 }
 
+function assertAuthorizationListPolicy<C extends EvmChain>(policy: SignerPolicy<C>, simulated: SimulatedTx<C>): void {
+  const list = simulated.intent.authorizationList;
+  if (!list) return;
+  if (!policy.allowEip7702Transactions) fail("ES3818", "Eip7702TransactionNotAuthorized", "Signer policy does not permit transactions carrying EIP-7702 authorization lists.");
+  const delegates = policy.allowedEip7702Delegates ?? [];
+  for (const [index, authorization] of list.entries()) {
+    if (authorization.replayable && !policy.allowReplayableEip7702Authorization) {
+      fail("ES4104", "ReplayableEip7702AuthorizationNotAuthorized", "Signer policy does not permit replayable EIP-7702 authorizations inside the transaction.", { index, authority: authorization.authority });
+    }
+    if (authorization.clearsDelegation) {
+      if (!policy.allowEip7702ClearDelegation) fail("ES4105", "Eip7702ClearDelegationNotAuthorized", "Signer policy does not permit delegation clearing inside the transaction.", { index, authority: authorization.authority });
+      continue;
+    }
+    if (!delegates.some((candidate) => sameAddress(candidate, authorization.delegate))) {
+      fail("ES3819", "Eip7702TransactionDelegateNotAuthorized", "Transaction contains an EIP-7702 delegate outside the outer signer policy allowlist.", { index, delegate: authorization.delegate, authority: authorization.authority });
+    }
+  }
+}
+
 export function assertSignerPolicy<C extends EvmChain>(chain: C, policy: SignerPolicy<C>, simulated: SimulatedTx<C>): void {
   if (chain.id !== simulated.intent.chain.id || policy.chain.id !== chain.id) fail("ES3104", "ChainMismatch", "Signer policy is bound to a different chain.", { capabilityChain: chain.name, transactionChain: simulated.intent.chain.name });
   if (simulated.simulation.stateOverrides && !policy.allowStateOverrideSimulation) fail("ES3804", "HypotheticalSimulationNotAuthorized", "A transaction simulated with state overrides cannot be signed by this policy.");
@@ -83,6 +108,8 @@ export function assertSignerPolicy<C extends EvmChain>(chain: C, policy: SignerP
   } else if (simulated.intent.to && !policy.allowNativeTransfer) {
     fail("ES3810", "NativeTransferNotAuthorized", "Plain native transfers are disabled by this signer policy.");
   }
+
+  assertAuthorizationListPolicy(policy, simulated);
 }
 
 export function assertSignerCapability<C extends EvmChain>(capability: SignerCapability<C>, simulated: SimulatedTx<C>): void {
@@ -123,6 +150,7 @@ export function accountForCapability<C extends EvmChain>(capability: SignerCapab
 export async function signSimulatedWithCapability<C extends EvmChain>(capability: SignerCapability<C>, simulated: SimulatedTx<C>): Promise<SignedTx<C>> {
   assertSignerCapability(capability, simulated);
   const account = accountForCapability(capability, simulated.intent.from);
+  const authorizationList = authorizationListForViem(simulated.intent);
   const request: Record<string, unknown> = {
     chainId: simulated.intent.chain.id,
     nonce: simulated.nonce.value,
@@ -130,6 +158,7 @@ export async function signSimulatedWithCapability<C extends EvmChain>(capability
     ...(simulated.intent.to ? { to: simulated.intent.to } : {}),
     ...(simulated.intent.value !== undefined ? { value: unwrapWei(simulated.intent.value) } : {}),
     ...(simulated.intent.data !== undefined ? { data: simulated.intent.data as Hex } : {}),
+    ...(authorizationList ? { type: "eip7702", authorizationList } : {}),
   };
   if (simulated.fees.type === "eip1559") {
     request.maxFeePerGas = unwrapWei(simulated.fees.maxFeePerGas);
