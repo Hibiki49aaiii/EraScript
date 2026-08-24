@@ -1,4 +1,5 @@
 import type { Hex } from "viem";
+import { verifyAuthorization } from "viem/utils";
 import { EraDiagnosticError } from "../diagnostics.js";
 import { accountForCapability, sameAddress, type SignerCapability, type SignerPolicy } from "./capabilities.js";
 import { assertRpcChain, type ViemClientLike } from "./rpc.js";
@@ -126,14 +127,14 @@ export function assertEip7702Policy<C extends EvmChain>(policy: SignerPolicy<C>,
   if (!allowed.some((candidate) => sameAddress(candidate, request.delegate))) fail("ES4106", "Eip7702DelegateNotAuthorized", "EIP-7702 delegate is outside the signer policy allowlist.", { delegate: request.delegate });
 }
 
-function validateSignedResponse<C extends EvmChain>(request: Eip7702AuthorizationRequest<C>, response: {
+async function validateSignedResponse<C extends EvmChain>(request: Eip7702AuthorizationRequest<C>, response: {
   address: string;
   chainId: number;
   nonce: number;
   yParity: number;
   r: string;
   s: string;
-}): SignedEip7702Authorization<C> {
+}): Promise<SignedEip7702Authorization<C>> {
   if (!sameAddress(response.address, request.delegate) || response.chainId !== request.chainId || response.nonce !== request.nonce) {
     fail("ES4107", "Eip7702SignerResponseMismatch", "Signed EIP-7702 authorization does not match the requested delegate/chainId/nonce.", {
       requestedDelegate: request.delegate,
@@ -147,6 +148,23 @@ function validateSignedResponse<C extends EvmChain>(request: Eip7702Authorizatio
   if ((response.yParity !== 0 && response.yParity !== 1) || !/^0x[0-9a-fA-F]{64}$/.test(response.r) || !/^0x[0-9a-fA-F]{64}$/.test(response.s)) {
     fail("ES4108", "InvalidEip7702Signature", "EIP-7702 signer returned an invalid secp256k1 signature tuple.");
   }
+
+  const authorization = {
+    address: request.delegate,
+    chainId: request.chainId,
+    nonce: request.nonce,
+    yParity: response.yParity,
+    r: response.r as Hex,
+    s: response.s as Hex,
+  };
+  let valid = false;
+  try {
+    valid = await verifyAuthorization({ address: request.authority, authorization });
+  } catch (error) {
+    return fail("ES4110", "Eip7702SignatureVerificationFailed", "EIP-7702 authorization signature could not be verified.", { cause: error instanceof Error ? error.message : String(error) });
+  }
+  if (!valid) fail("ES4110", "Eip7702SignatureVerificationFailed", "EIP-7702 authorization was not signed by the declared authority.", { authority: request.authority });
+
   return {
     ...request,
     kind: "eip7702-signed-authorization",
