@@ -14,9 +14,9 @@ import {
 } from "./railgun.js";
 
 export interface RailgunWalletSdkLike {
-  gasEstimateForUnprovenTransfer(...args: readonly unknown[]): Promise<unknown>;
-  generateTransferProof(...args: readonly unknown[]): Promise<unknown>;
-  populateProvedTransfer(...args: readonly unknown[]): Promise<unknown>;
+  gasEstimateForUnprovenTransfer(...args: unknown[]): Promise<unknown>;
+  generateTransferProof(...args: unknown[]): Promise<unknown>;
+  populateProvedTransfer(...args: unknown[]): Promise<unknown>;
 }
 
 export interface RailgunWalletSdkConfig {
