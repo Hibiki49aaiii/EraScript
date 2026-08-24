@@ -1,6 +1,11 @@
 import type { Hex } from "viem";
 import { EraDiagnosticError } from "../diagnostics.js";
 import { assertSignerPolicy, assertTypedDataPolicy, sameAddress, type SignerPolicy } from "./capabilities.js";
+import {
+  signEip7702WithExternalSigner,
+  type Eip7702AuthorizationRequest,
+  type SignedEip7702Authorization,
+} from "./eip7702.js";
 import { signSimulated, type SignedTx, type SimulatedTx } from "./tx.js";
 import { typedSignature, type TypedDataEnvelope, type TypedSignature } from "./typed-data.js";
 import type { Address, EvmChain } from "./types.js";
@@ -41,6 +46,14 @@ export interface ExternalSigner<C extends EvmChain = EvmChain> {
   readonly id?: string;
   signTransaction(request: ExternalTransactionSigningRequest<C>): Promise<Hex>;
   signTypedData?<P extends string>(request: ExternalTypedDataSigningRequest<C, P>): Promise<Hex>;
+  signEip7702Authorization?(request: Eip7702AuthorizationRequest<C>): Promise<{
+    address: string;
+    chainId: number;
+    nonce: number;
+    yParity: number;
+    r: string;
+    s: string;
+  }>;
 }
 
 export interface ExternalSignerCapability<C extends EvmChain = EvmChain> {
@@ -107,4 +120,18 @@ export async function signTypedDataWithExternalSigner<C extends EvmChain, P exte
     envelope,
   });
   return typedSignature(signature, envelope, capability.signer.address);
+}
+
+export async function signEip7702WithExternalCapability<C extends EvmChain>(capability: ExternalSignerCapability<C>, request: Eip7702AuthorizationRequest<C>): Promise<SignedEip7702Authorization<C>> {
+  if (!capability.signer.signEip7702Authorization) fail("ES3834", "ExternalEip7702SigningUnsupported", "External signer does not expose EIP-7702 authorization signing.", { signerId: capability.signer.id ?? null });
+  return signEip7702WithExternalSigner(
+    {
+      chain: capability.signer.chain,
+      address: capability.signer.address,
+      ...(capability.signer.id ? { id: capability.signer.id } : {}),
+      signEip7702Authorization: capability.signer.signEip7702Authorization.bind(capability.signer),
+    },
+    capability.policy,
+    request,
+  );
 }
