@@ -21,6 +21,10 @@ function rawBytes(value: Hex): number {
   return (value.length - 2) / 2;
 }
 
+function sameAddress(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 export interface FlashbotsBundle<C extends EvmChain = EvmChain> {
   readonly state: "bundle-draft";
   readonly chain: C;
@@ -150,18 +154,21 @@ export async function simulateFlashbotsBundle<C extends EvmChain>(relay: Flashbo
     txs: bundle.transactions.map((tx) => tx.rawTransaction),
     blockNumber: hexBlock(bundle.targetBlock),
     stateBlockNumber: hexBlock(bundle.stateBlock),
-    ...(bundle.minTimestamp !== undefined ? { timestamp: bundle.minTimestamp } : {}),
   }]);
   const rows = Array.isArray(result.results) ? result.results as Record<string, unknown>[] : [];
-  const transactions = rows.map((row) => ({
-    ...(typeof row.txHash === "string" ? { txHash: row.txHash } : {}),
-    ...(parseBigInt(row.gasUsed) !== undefined ? { gasUsed: parseBigInt(row.gasUsed)! } : {}),
-    ...(typeof row.error === "string" ? { error: row.error } : {}),
-    ...(typeof row.revert === "string" ? { revert: row.revert } : {}),
-  }));
+  const transactions = rows.map((row) => {
+    const gasUsed = parseBigInt(row.gasUsed);
+    return {
+      ...(typeof row.txHash === "string" ? { txHash: row.txHash } : {}),
+      ...(gasUsed !== undefined ? { gasUsed } : {}),
+      ...(typeof row.error === "string" ? { error: row.error } : {}),
+      ...(typeof row.revert === "string" ? { revert: row.revert } : {}),
+    };
+  });
   const failed = transactions.find((tx) => tx.error !== undefined || tx.revert !== undefined);
-  if (failed || typeof result.firstRevert === "object") fail("ES3937", "FlashbotsBundleSimulationFailed", "Flashbots bundle simulation contains a reverting or failed transaction.", { targetBlock: bundle.targetBlock.toString(), failure: failed ?? result.firstRevert });
+  if (failed || result.firstRevert !== undefined) fail("ES3937", "FlashbotsBundleSimulationFailed", "Flashbots bundle simulation contains a reverting or failed transaction.", { targetBlock: bundle.targetBlock.toString(), failure: failed ?? result.firstRevert });
   if (typeof result.bundleHash !== "string") fail("ES3938", "MissingBundleHash", "Flashbots simulation did not return a bundleHash.");
+  const totalGasUsed = parseBigInt(result.totalGasUsed);
   return {
     ...bundle,
     state: "bundle-simulated",
@@ -169,7 +176,7 @@ export async function simulateFlashbotsBundle<C extends EvmChain>(relay: Flashbo
       targetBlock: bundle.targetBlock,
       stateBlock: bundle.stateBlock,
       bundleHash: hash(result.bundleHash, "keccak256"),
-      ...(parseBigInt(result.totalGasUsed) !== undefined ? { totalGasUsed: parseBigInt(result.totalGasUsed)! } : {}),
+      ...(totalGasUsed !== undefined ? { totalGasUsed } : {}),
       transactions,
       raw: result,
     },
@@ -206,13 +213,13 @@ function loadAuthKey<C extends EvmChain>(ref: PrivateKeyRef<C>): Hex {
   return value as Hex;
 }
 
-/**
- * Direct authenticated Flashbots JSON-RPC transport. Auth key is only relay identity/reputation and should be separate from funded transaction signers.
- */
+/** Direct authenticated JSON-RPC transport. Keep this auth identity separate from funded transaction signers. */
 export function createFlashbotsRelay<C extends EvmChain>(input: { url: string; auth: PrivateKeyRef<C> }): FlashbotsRelay {
   let account: ReturnType<typeof privateKeyToAccount>;
   try { account = privateKeyToAccount(loadAuthKey(input.auth)); }
   catch { return fail("ES3944", "InvalidFlashbotsAuthSecret", "Flashbots auth key could not derive an ECDSA account."); }
+  if (input.auth.expectedAddress && !sameAddress(account.address, input.auth.expectedAddress)) fail("ES3949", "FlashbotsAuthAddressMismatch", "Flashbots auth key does not derive the expected relay identity.", { expected: input.auth.expectedAddress, derived: account.address });
+
   return {
     url: input.url,
     authAddress: account.address,
