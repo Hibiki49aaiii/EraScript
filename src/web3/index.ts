@@ -9,6 +9,7 @@ export * from "./merkle.js";
 export * from "./nonce.js";
 export * from "./permit.js";
 export * from "./rpc.js";
+export * from "./safe.js";
 export * from "./secrets.js";
 export * from "./state.js";
 export * from "./token.js";
