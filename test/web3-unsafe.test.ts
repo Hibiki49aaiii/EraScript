@@ -17,17 +17,17 @@ test("unsafeBoundary requires a static auditable reason", () => {
   `, "claim.ts");
   assert.equal(valid.unsafeBoundaries.length, 1);
   assert.equal(valid.unsafeBoundaries[0]?.reason, "non-standard claim contract calldata encoding");
-  assert.ok(valid.diagnostics.some((diagnostic) => diagnostic.code === "ES3900" && diagnostic.severity === "warning"));
+  assert.ok(valid.diagnostics.some((diagnostic) => diagnostic.code === "ES4080" && diagnostic.severity === "warning"));
 
   const dynamic = analyzeWeb3Source(`
     const reason = getReason()
     unsafeBoundary(reason, () => legacyEncode())
   `, "claim.ts");
-  assert.ok(dynamic.diagnostics.some((diagnostic) => diagnostic.code === "ES3901" && diagnostic.severity === "error"));
+  assert.ok(dynamic.diagnostics.some((diagnostic) => diagnostic.code === "ES4081" && diagnostic.severity === "error"));
   assert.equal(dynamic.unsafeBoundaries.length, 0);
 
   const vague = analyzeWeb3Source(`unsafeBoundary("legacy", () => legacyEncode())`, "claim.ts");
-  assert.ok(vague.diagnostics.some((diagnostic) => diagnostic.code === "ES3902"));
+  assert.ok(vague.diagnostics.some((diagnostic) => diagnostic.code === "ES4082"));
 });
 
 test("unsafe boundary policy default-denies recorded bypasses", () => {
@@ -41,7 +41,7 @@ test("unsafe boundary policy default-denies recorded bypasses", () => {
   };
   assert.throws(
     () => assertUnsafeBoundaryPolicy([boundary], { allow: false }),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3905",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4085",
   );
   assert.doesNotThrow(() => assertUnsafeBoundaryPolicy([boundary], {
     allow: true,
