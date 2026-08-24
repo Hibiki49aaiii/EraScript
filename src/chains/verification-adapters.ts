@@ -1,13 +1,79 @@
+import { EraDiagnosticError } from "../diagnostics.js";
+import type { IncludedTx, ConfirmedTx, FinalizedTx } from "../web3/tx.js";
+import type { EvmChain } from "../web3/types.js";
 import type { JitoBundleStatusEvidence, JitoBundleSubmitted } from "./jito.js";
+import type { RollupSettlementEvidence } from "./rollup-finality.js";
 import type { SolanaSignatureStatusEvidence, SolanaSubmittedTransaction } from "./solana-adapter.js";
 import type { SuiCheckpointEvidence, SuiExecutedTransaction, SuiExecutionFailedTransaction } from "./sui-adapter.js";
-import type { SolanaChainProfile, SuiChainProfile } from "./types.js";
+import type { EvmChainProfile, SolanaChainProfile, SuiChainProfile } from "./types.js";
 import {
   createMultichainVerificationReport,
   multichainEvidenceRef,
   type MultichainVerificationCheck,
   type MultichainVerificationReport,
 } from "./verification.js";
+
+type EvmObservedTransaction<C extends EvmChain = EvmChain> = IncludedTx<C> | ConfirmedTx<C, number> | FinalizedTx<C>;
+
+function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
+  throw new EraDiagnosticError({ code, severity: "error", kind, message, ...(details ? { details } : {}) });
+}
+
+export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmChainProfile, transaction: EvmObservedTransaction<C>, settlement?: RollupSettlementEvidence): MultichainVerificationReport {
+  if (transaction.intent.chain.id !== profile.chainId) fail("ES4640", "EvmVerificationProfileMismatch", "EVM verification transaction belongs to a different chain profile.", { transactionChainId: transaction.intent.chain.id, profileChainId: profile.chainId, profile: profile.id });
+  const checks: MultichainVerificationCheck[] = [
+    {
+      id: "evm.receipt",
+      status: transaction.receipt.status === "success" ? "pass" : "fail",
+      message: transaction.receipt.status === "success" ? `EVM transaction is ${transaction.state} with a successful receipt.` : "EVM transaction receipt is reverted.",
+      details: { blockNumber: transaction.receipt.blockNumber.toString(), transactionHash: transaction.receipt.transactionHash },
+    },
+  ];
+
+  let state: "NOT_READY" | "EXECUTION_OBSERVED" | "VERIFIED_FINALITY" = transaction.receipt.status === "success" ? "EXECUTION_OBSERVED" : "NOT_READY";
+
+  if (profile.finality.kind === "evm-rollup") {
+    if (!settlement) {
+      checks.push({ id: "evm.rollup-settlement", status: "warning", message: "L2 execution is observed, but protocol-specific L1 settlement evidence is not attached." });
+    } else {
+      const matching = settlement.profileId === profile.id
+        && settlement.l2TransactionHash.toLowerCase() === transaction.receipt.transactionHash.toLowerCase()
+        && settlement.l2BlockNumber === transaction.receipt.blockNumber
+        && settlement.l2BlockHash.toLowerCase() === transaction.receipt.blockHash.toLowerCase();
+      if (!matching) {
+        checks.push({ id: "evm.rollup-settlement", status: "fail", message: "Rollup settlement evidence is not bound to this exact L2 transaction/block." });
+        state = "NOT_READY";
+      } else if (settlement.stage === "l1-finalized") {
+        checks.push({ id: "evm.rollup-settlement", status: "pass", message: "Protocol-specific adapter reports the L2 transaction as L1-finalized.", details: { protocol: settlement.protocol, adapter: settlement.adapter, l1BlockNumber: settlement.l1Anchor?.blockNumber.toString() ?? null } });
+        if (transaction.receipt.status === "success") state = "VERIFIED_FINALITY";
+      } else {
+        checks.push({ id: "evm.rollup-settlement", status: "warning", message: `Rollup settlement has reached '${settlement.stage}', but not L1 finalized settlement.`, details: { protocol: settlement.protocol, adapter: settlement.adapter } });
+      }
+    }
+  } else {
+    if (settlement) {
+      checks.push({ id: "evm.rollup-settlement", status: "fail", message: "Rollup settlement evidence was supplied for a non-rollup EVM profile." });
+      state = "NOT_READY";
+    } else if (transaction.state === "finalized" && transaction.receipt.status === "success") {
+      checks.push({ id: "evm.finality", status: "pass", message: "Transaction has reached the chain profile's finalized EVM state." });
+      state = "VERIFIED_FINALITY";
+    } else {
+      checks.push({ id: "evm.finality", status: "warning", message: "Successful EVM execution is observed but has not reached the configured finalized state." });
+    }
+  }
+
+  return createMultichainVerificationReport({
+    profile,
+    backend: "public-rpc",
+    subject: `evm:${transaction.receipt.transactionHash}`,
+    state,
+    checks,
+    evidence: [
+      multichainEvidenceRef("evm-execution", transaction, "viem"),
+      ...(settlement ? [multichainEvidenceRef("rollup-settlement", settlement, settlement.adapter)] : []),
+    ],
+  });
+}
 
 export function solanaSubmissionVerificationReport(profile: SolanaChainProfile, submitted: SolanaSubmittedTransaction, status?: SolanaSignatureStatusEvidence): MultichainVerificationReport {
   const checks: MultichainVerificationCheck[] = [
