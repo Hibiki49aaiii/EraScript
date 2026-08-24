@@ -1,7 +1,9 @@
 export * from "./abi.js";
 export * from "./analyze.js";
 export * from "./capabilities.js";
+export * from "./eip7702.js";
 export * from "./events.js";
+export * from "./external-signer.js";
 export * from "./flashbots.js";
 export * from "./merkle.js";
 export * from "./nonce.js";
@@ -14,5 +16,6 @@ export * from "./tx.js";
 export * from "./typed-data.js";
 export * from "./types.js";
 export * from "./values.js";
+export * from "./verification-io.js";
 export * from "./verification.js";
 export * from "./workflow.js";
