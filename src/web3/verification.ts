@@ -42,7 +42,7 @@ function check(id: string, status: VerificationCheckStatus, message: string, det
   return { id, status, message, ...(details ? { details } : {}) };
 }
 
-function stableReportHash<C extends EvmChain>(chain: C, state: RescueVerificationState, checks: readonly VerificationCheck[]): Hash<"keccak256"> {
+export function verificationReportHash<C extends EvmChain>(chain: C, state: RescueVerificationState, checks: readonly VerificationCheck[]): Hash<"keccak256"> {
   const normalized = JSON.stringify({
     chainId: chain.id,
     state,
@@ -56,7 +56,7 @@ function report<C extends EvmChain>(chain: C, state: RescueVerificationState, ch
     kind: "rescue-verification-report",
     chain,
     state,
-    reportHash: stableReportHash(chain, state, checks),
+    reportHash: verificationReportHash(chain, state, checks),
     checks,
     readyForBroadcast: state === "READY_FOR_BROADCAST" || state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
     recoveryObserved: state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
