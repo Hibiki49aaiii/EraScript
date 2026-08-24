@@ -7,6 +7,7 @@ export * from "./verification.js";
 export * from "./verification-adapters.js";
 export * from "./rollup-finality.js";
 export * from "./op-stack-finality.js";
+export * from "./arbitrum-finality.js";
 export * from "./solana.js";
 export * from "./solana-adapter.js";
 export * from "./solana-kit-bridge.js";
