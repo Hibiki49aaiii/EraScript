@@ -213,8 +213,9 @@ export function applyFinalPaymasterData<C extends EvmChain, V extends EraEntryPo
       finalPostOpGas: evidence.paymasterPostOpGasLimit.toString(),
     });
   }
+  const { paymasterSignature: _discardStubSignature, ...withoutStubSignature } = prepared;
   const updated: PreparedUserOperation<C, V> = {
-    ...prepared,
+    ...withoutStubSignature,
     paymasterData: evidence.paymasterData,
     ...(evidence.paymasterSignature ? { paymasterSignature: evidence.paymasterSignature } : {}),
   };
