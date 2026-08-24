@@ -1,5 +1,6 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { SolanaTransactionInspector, SolanaTransactionInspection } from "./solana-adapter.js";
+import { solanaBlockhash } from "./solana.js";
 import type { SolanaSigningInspection, SolanaSigningInspector } from "./solana-signing.js";
 
 export interface SolanaKitDecoder<T> {
@@ -52,18 +53,14 @@ export function createSolanaKitEraInspectors(input: SolanaKitCodecBridgeInput): 
   const transactionInspector: SolanaTransactionInspector = (serializedTransaction): SolanaTransactionInspection => {
     const { message } = decode(input, serializedTransaction);
     if (message.version === 1) fail("ES4612", "UnsupportedSolanaKitTransactionVersion", "EraScript v0.6 runtime gate currently supports Solana legacy/v0 transactions; v1 decoder output is recognized but not execution-enabled.");
-    return { version: message.version, recentBlockhash: message.lifetimeToken as SolanaTransactionInspection["recentBlockhash"], signerCount: message.header.numSignerAccounts };
+    return { version: message.version, recentBlockhash: solanaBlockhash(message.lifetimeToken), signerCount: message.header.numSignerAccounts };
   };
 
   const signingInspector: SolanaSigningInspector = (serializedTransaction): SolanaSigningInspection => {
     const { transaction, message } = decode(input, serializedTransaction);
     if (message.version === 1) fail("ES4612", "UnsupportedSolanaKitTransactionVersion", "EraScript v0.6 signing gate currently supports Solana legacy/v0 transactions only.");
     const requiredSigners = message.staticAccounts.slice(0, message.header.numSignerAccounts);
-    return {
-      signingPayloadBase64: Buffer.from(transaction.messageBytes).toString("base64"),
-      requiredSigners,
-      feePayer: requiredSigners[0]!,
-    };
+    return { signingPayloadBase64: Buffer.from(transaction.messageBytes).toString("base64"), requiredSigners, feePayer: requiredSigners[0]! };
   };
 
   return { transactionInspector, signingInspector };
