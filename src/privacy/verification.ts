@@ -1,4 +1,5 @@
 import { EraDiagnosticError } from "../diagnostics.js";
+import { RailgunPrivacyOverlay } from "../chains/profiles.js";
 import { createMultichainVerificationReport, multichainEvidenceRef, type MultichainVerificationCheck, type MultichainVerificationReport } from "../chains/verification.js";
 import type { EvmChainProfile } from "../chains/types.js";
 import type { ConfirmedTx, FinalizedTx, IncludedTx } from "../web3/tx.js";
@@ -87,12 +88,13 @@ export function railgunVerificationReport<C extends EvmChain>(input: {
   return createMultichainVerificationReport({
     profile: input.profile,
     backend: input.submission.submission === "broadcaster" ? "railgun-broadcaster" : "railgun-self-submit",
+    overlay: RailgunPrivacyOverlay,
     subject: `railgun:${input.submission.proof.proofBindingHash}`,
     state,
     checks,
     evidence: [
       multichainEvidenceRef("railgun-submission", input.submission, input.submission.submission),
-      ...(input.baseExecution ? [multichainEvidenceRef("evm-base-execution", input.baseExecution, "viem")]: []),
+      ...(input.baseExecution ? [multichainEvidenceRef("evm-base-execution", input.baseExecution, "viem")] : []),
       ...(input.privateState ? [multichainEvidenceRef("railgun-private-state", input.privateState, input.privateState.source)] : []),
     ],
   });
