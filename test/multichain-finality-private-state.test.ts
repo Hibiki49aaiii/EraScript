@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertRollupL1Finalized,
+  createOpStackSettlementAdapter,
   defineEvmChainProfile,
   evmExecutionVerificationReport,
   observeRollupSettlement,
-  type RollupSettlementAdapter,
 } from "../src/chains/index.js";
 import {
   captureRailgunPrivateBalance,
@@ -32,11 +32,12 @@ import {
 
 const TX_HASH = `0x${"11".repeat(32)}` as `0x${string}`;
 const L2_BLOCK_HASH = `0x${"22".repeat(32)}` as `0x${string}`;
-const L1_BLOCK_HASH = `0x${"33".repeat(32)}` as `0x${string}`;
-const L1_TX_HASH = `0x${"44".repeat(32)}` as `0x${string}`;
+const L1_ORIGIN_HASH = `0x${"33".repeat(32)}` as `0x${string}`;
+const L1_FINALIZED_HASH = `0x${"44".repeat(32)}` as `0x${string}`;
+const OUTPUT_ROOT = `0x${"99".repeat(32)}` as `0x${string}`;
 const TOKEN = `0x${"55".repeat(20)}` as `0x${string}`;
 
-test("rollup finality keeps L2 finality separate from protocol-specific L1 settlement", async () => {
+test("OP Stack finality keeps L2 finality separate until rollup RPC proves finalized L1 derivation", async () => {
   const profile = defineEvmChainProfile({
     id: "evm.base.mainnet-test",
     name: "Base Test Profile",
@@ -69,24 +70,38 @@ test("rollup finality keeps L2 finality separate from protocol-specific L1 settl
   assert.equal(l2OnlyReport.state, "EXECUTION_OBSERVED");
   assert.equal(l2OnlyReport.verifiedFinality, false);
 
-  const adapter: RollupSettlementAdapter<typeof Base> = {
-    id: "test-op-stack-settlement",
-    protocol: "op-stack",
-    profileId: profile.id,
-    async observe() {
-      return {
-        l2TransactionHash: TX_HASH,
-        l2BlockNumber: 100n,
-        l2BlockHash: L2_BLOCK_HASH,
-        stage: "l1-finalized",
-        l1Anchor: { chainId: 1, blockNumber: 200n, blockHash: L1_BLOCK_HASH, transactionHash: L1_TX_HASH },
-        proofReference: "test-output-root",
-      };
+  const rpc = {
+    async request(input: { method: string; params?: readonly unknown[] }): Promise<unknown> {
+      if (input.method === "optimism_syncStatus") {
+        return {
+          safe_l1: { hash: L1_FINALIZED_HASH, number: 205 },
+          finalized_l1: { hash: L1_FINALIZED_HASH, number: 200 },
+          safe_l2: { hash: `0x${"aa".repeat(32)}`, number: 110, l1origin: { hash: L1_FINALIZED_HASH, number: 195 } },
+          finalized_l2: { hash: `0x${"bb".repeat(32)}`, number: 105, l1origin: { hash: L1_FINALIZED_HASH, number: 192 } },
+        };
+      }
+      if (input.method === "optimism_outputAtBlock") {
+        assert.deepEqual(input.params, ["0x64"]);
+        return {
+          outputRoot: OUTPUT_ROOT,
+          blockRef: {
+            hash: L2_BLOCK_HASH,
+            number: 100,
+            l1Origin: { hash: L1_ORIGIN_HASH, number: 190 },
+          },
+        };
+      }
+      throw new Error(`unexpected method: ${input.method}`);
     },
   };
+  const adapter = createOpStackSettlementAdapter<typeof Base>({ profile, rpc });
   const evidence = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter, nowMs: 2_000 });
   assert.equal(assertRollupL1Finalized(evidence).l1Anchor.chainId, 1);
+  assert.equal(evidence.l1Anchor?.blockNumber, 190n);
+  assert.equal(evidence.l1Anchor?.blockHash, L1_ORIGIN_HASH);
   assert.equal(evidence.stage, "l1-finalized");
+  assert.equal(evidence.proofReference, `op-output-root:${OUTPUT_ROOT}`);
+
   const settledReport = evmExecutionVerificationReport(profile, finalizedL2, evidence);
   assert.equal(settledReport.state, "VERIFIED_FINALITY");
   assert.equal(settledReport.verifiedFinality, true);
