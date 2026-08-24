@@ -6,6 +6,8 @@ export * from "./verification.js";
 export * from "./verification-adapters.js";
 export * from "./solana.js";
 export * from "./solana-adapter.js";
+export * from "./solana-signing.js";
 export * from "./jito.js";
 export * from "./sui.js";
 export * from "./sui-adapter.js";
+export * from "./sui-sponsorship.js";
