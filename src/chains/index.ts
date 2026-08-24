@@ -17,3 +17,4 @@ export * from "./sui.js";
 export * from "./sui-adapter.js";
 export * from "./sui-sdk-bridge.js";
 export * from "./sui-sponsorship.js";
+export * from "./sui-state.js";
