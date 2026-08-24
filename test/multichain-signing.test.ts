@@ -13,6 +13,7 @@ import {
   prepareSolanaSerializedTransaction,
   prepareSuiTransaction,
   signWithMultichainExternalSigner,
+  solanaBlockhash,
   solanaRecentBlockhash,
   verifySolanaSerializedTransaction,
   verifySuiSerializedTransaction,
@@ -50,7 +51,7 @@ async function verifiedSignature(request: MultichainSigningRequest): Promise<Ver
 test("Solana signing plan binds every required signer to the exact decoded message bytes", async () => {
   const recent = solanaRecentBlockhash({ blockhash: SOL_BLOCKHASH, lastValidBlockHeight: 150n, observedBlockHeight: 100n });
   const prepared = prepareSolanaSerializedTransaction({ profile: SolanaMainnetProfile, serializedBase64: TX_BASE64, recentBlockhash: recent });
-  const verified = await verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: SOL_BLOCKHASH, signerCount: 2 }));
+  const verified = await verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: solanaBlockhash(SOL_BLOCKHASH), signerCount: 2 }));
   const plan = await createSolanaSigningPlan(SolanaMainnetProfile, verified, async () => ({
     signingPayloadBase64: MESSAGE_BASE64,
     requiredSigners: [SOL_FEE_PAYER, SOL_SECOND_SIGNER],
