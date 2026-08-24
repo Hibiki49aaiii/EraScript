@@ -19,7 +19,7 @@ import {
 } from "./web3/verification-io.js";
 import type { RescueVerificationState } from "./web3/verification.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const VERIFICATION_STATES = new Set<RescueVerificationState>([
   "NOT_READY",
   "READY_FOR_BROADCAST",
