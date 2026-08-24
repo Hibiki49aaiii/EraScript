@@ -1,5 +1,7 @@
 import type { Hex } from "viem";
 import { EraDiagnosticError } from "../diagnostics.js";
+import type { SignedEip7702Authorization } from "./eip7702.js";
+import type { Nonce } from "./nonce.js";
 import {
   blockHash,
   transactionHash,
@@ -9,7 +11,6 @@ import {
   type EvmChain,
   type TransactionHash,
 } from "./types.js";
-import type { Nonce } from "./nonce.js";
 import type { Gas, MaxFeePerGas, MaxPriorityFeePerGas, Wei, WeiPerGas } from "./values.js";
 
 export type FeeModel =
@@ -26,6 +27,27 @@ export interface TxIntent<C extends EvmChain = EvmChain> {
   readonly to?: Address<C>;
   readonly value?: Wei;
   readonly data?: Calldata;
+  readonly authorizationList?: readonly SignedEip7702Authorization<C>[];
+}
+
+export interface ViemEip7702Authorization<C extends EvmChain = EvmChain> {
+  readonly address: Address<C>;
+  readonly chainId: number;
+  readonly nonce: number;
+  readonly yParity: number;
+  readonly r: Hex;
+  readonly s: Hex;
+}
+
+export function authorizationListForViem<C extends EvmChain>(intent: TxIntent<C>): readonly ViemEip7702Authorization<C>[] | undefined {
+  return intent.authorizationList?.map((authorization) => ({
+    address: authorization.delegate,
+    chainId: authorization.chainId,
+    nonce: authorization.nonce,
+    yParity: authorization.yParity,
+    r: authorization.r,
+    s: authorization.s,
+  }));
 }
 
 export interface DraftTx<C extends EvmChain = EvmChain> {
@@ -131,6 +153,37 @@ function txError(code: string, kind: string, message: string, details?: Record<s
   });
 }
 
+function sameAddress(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+function validateAuthorizationList<C extends EvmChain>(draft: DraftTx<C>, txNonce: Nonce<C>, fees: FeeModel): void {
+  const list = draft.intent.authorizationList;
+  if (list === undefined) return;
+  if (list.length === 0) txError("ES4111", "EmptyEip7702AuthorizationList", "EIP-7702 transactions require a non-empty authorization list.");
+  if (!draft.intent.from) txError("ES4118", "MissingEip7702Executor", "EIP-7702 transaction intent must declare the outer transaction sender.");
+  if (!draft.intent.to) txError("ES4112", "MissingEip7702Destination", "EIP-7702 set-code transactions require a non-null destination.");
+  if (fees.type !== "eip1559") txError("ES4113", "InvalidEip7702FeeModel", "EIP-7702 set-code transactions require EIP-1559 fee fields.");
+
+  const authorities = new Set<string>();
+  for (const [index, authorization] of list.entries()) {
+    if (authorization.chain.id !== draft.intent.chain.id) txError("ES3104", "ChainMismatch", "EIP-7702 authorization is bound to a different EraScript chain.", { index, authorizationChain: authorization.chain.id, transactionChain: draft.intent.chain.id });
+    if (authorization.chainId !== 0 && authorization.chainId !== draft.intent.chain.id) txError("ES3104", "ChainMismatch", "EIP-7702 authorization chainId is neither zero nor the transaction chain.", { index, authorizationChainId: authorization.chainId, transactionChain: draft.intent.chain.id });
+
+    const authorityKey = authorization.authority.toLowerCase();
+    if (authorities.has(authorityKey)) txError("ES4114", "DuplicateEip7702Authority", "Multiple authorization tuples for the same authority are rejected because protocol processing uses the last valid occurrence.", { index, authority: authorization.authority });
+    authorities.add(authorityKey);
+
+    const executorIsAuthority = sameAddress(draft.intent.from, authorization.authority);
+    if (authorization.executor === "self") {
+      if (!executorIsAuthority) txError("ES4115", "Eip7702ExecutorMismatch", "Authorization declares self execution but the outer transaction sender is different.", { index, authority: authorization.authority, transactionFrom: draft.intent.from });
+      if (authorization.nonce !== txNonce.value + 1) txError("ES4116", "Eip7702SelfNonceMismatch", "Self-executing EIP-7702 authorization nonce must equal the outer transaction nonce plus one.", { index, transactionNonce: txNonce.value, authorizationNonce: authorization.nonce });
+    } else if (executorIsAuthority) {
+      txError("ES4117", "Eip7702ExecutorMismatch", "Authorization declares relayer execution but the authority is also the outer transaction sender. Use executor='self' and the +1 authorization nonce rule.", { index, authority: authorization.authority });
+    }
+  }
+}
+
 export function draftTransaction<C extends EvmChain>(intent: TxIntent<C>): DraftTx<C> {
   return { state: "draft", intent };
 }
@@ -153,6 +206,7 @@ export function prepareTransaction<C extends EvmChain>(
     txError("ES3420", "InvalidFeeModel", "maxPriorityFeePerGas cannot exceed maxFeePerGas.");
   }
 
+  validateAuthorizationList(draft, input.nonce, input.fees);
   return { state: "prepared", intent: draft.intent, nonce: input.nonce, gas: input.gas, fees: input.fees };
 }
 
