@@ -23,7 +23,7 @@ function assignments(file: string): Assignment[] {
   const source = readFileSync(file, "utf8");
   const result: Assignment[] = [];
   const patterns = [
-    /(?:fail|txError|invalidHex)\(\s*["'](ES\d{4})["']\s*,\s*["']([^"']+)["']/g,
+    /\b[A-Za-z_$][\w$]*\(\s*["'](ES\d{4})["']\s*,\s*["']([^"']+)["']/g,
     /code:\s*["'](ES\d{4})["'][\s\S]{0,180}?kind:\s*["']([^"']+)["']/g,
   ];
   for (const pattern of patterns) {
