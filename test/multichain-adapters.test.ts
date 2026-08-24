@@ -21,6 +21,7 @@ import {
   readSolanaSignatureStatus,
   simulateSolanaTransaction,
   simulateSuiPreparedTransaction,
+  solanaBlockhash,
   solanaTransactionSignature,
   submitJitoBundle,
   submitSolanaTransaction,
@@ -71,7 +72,7 @@ test("Solana adapter requires serialized blockhash/version inspection before sim
   };
   const recent = await captureSolanaRecentBlockhash(client);
   const prepared = prepareSolanaSerializedTransaction({ profile: SolanaMainnetProfile, serializedBase64: BASE64_TX, recentBlockhash: recent });
-  const verified = await verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: SOL_BLOCKHASH, signerCount: 1 }));
+  const verified = await verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: solanaBlockhash(SOL_BLOCKHASH), signerCount: 1 }));
   const simulation = await simulateSolanaTransaction(client, verified);
   assert.equal(simulation.success, true);
   const submitted = await submitSolanaTransaction(client, simulation as typeof simulation & { success: true });
@@ -80,7 +81,7 @@ test("Solana adapter requires serialized blockhash/version inspection before sim
   assert.equal(assertSolanaFinalized(status).confirmationStatus, "finalized");
 
   await assert.rejects(
-    () => verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: SOL_OTHER_BLOCKHASH, signerCount: 1 })),
+    () => verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: solanaBlockhash(SOL_OTHER_BLOCKHASH), signerCount: 1 })),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4468",
   );
 
