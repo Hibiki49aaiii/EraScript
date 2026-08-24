@@ -109,7 +109,7 @@ export async function generateRailgunTransferProofWithSdk<C extends EvmChain>(sd
     progress,
   );
   const generatedAtMs = options.generatedAtMs ?? Date.now();
-  const proof = createRailgunProofEvidence(source, { proofId: options.proofId ?? `wallet-sdk:${source.intentHash}:${generatedAtMs}`, generatedAt: generatedAtMs });
+  const proof = createRailgunProofEvidence(source, { proofId: options.proofId ?? `wallet-sdk:${source.intentHash}:${generatedAtMs}`, generatedAtMs });
   return { kind: "railgun-sdk-proof-session", source, proof, sdkNetwork: config.sdkNetwork, sdkTxidVersion: config.sdkTxidVersion };
 }
 
