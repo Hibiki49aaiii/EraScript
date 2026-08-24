@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   assertRollupL1Finalized,
   defineEvmChainProfile,
+  evmExecutionVerificationReport,
   observeRollupSettlement,
   type RollupSettlementAdapter,
 } from "../src/chains/index.js";
@@ -64,6 +65,10 @@ test("rollup finality keeps L2 finality separate from protocol-specific L1 settl
   const included = markIncluded(broadcast, { transactionHash: TX_HASH, blockHash: L2_BLOCK_HASH, blockNumber: 100n, status: "success", gasUsed: 21_000n });
   const finalizedL2 = markFinalized(markConfirmed(included, 1));
 
+  const l2OnlyReport = evmExecutionVerificationReport(profile, finalizedL2);
+  assert.equal(l2OnlyReport.state, "EXECUTION_OBSERVED");
+  assert.equal(l2OnlyReport.verifiedFinality, false);
+
   const adapter: RollupSettlementAdapter<typeof Base> = {
     id: "test-op-stack-settlement",
     protocol: "op-stack",
@@ -82,6 +87,9 @@ test("rollup finality keeps L2 finality separate from protocol-specific L1 settl
   const evidence = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter, nowMs: 2_000 });
   assert.equal(assertRollupL1Finalized(evidence).l1Anchor.chainId, 1);
   assert.equal(evidence.stage, "l1-finalized");
+  const settledReport = evmExecutionVerificationReport(profile, finalizedL2, evidence);
+  assert.equal(settledReport.state, "VERIFIED_FINALITY");
+  assert.equal(settledReport.verifiedFinality, true);
 });
 
 test("RAILGUN private-state evidence is derived from refreshed before/after balance snapshots", async () => {
