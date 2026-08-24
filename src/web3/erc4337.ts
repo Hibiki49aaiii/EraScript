@@ -4,6 +4,7 @@ import { EraDiagnosticError } from "../diagnostics.js";
 import type { SignedEip7702Authorization } from "./eip7702.js";
 import { toViemAuthorization } from "./eip7702.js";
 import {
+  address,
   blockHash,
   hash,
   transactionHash,
@@ -155,6 +156,17 @@ type BundlerReceipt = {
   };
 };
 
+type UserOperationFields<C extends EvmChain, V extends EraEntryPointVersion> = Omit<UserOperationDraft<C, V>, "state"> & {
+  readonly callGasLimit?: bigint;
+  readonly verificationGasLimit?: bigint;
+  readonly preVerificationGas?: bigint;
+};
+
+type SignedUserOperationFields<C extends EvmChain, V extends EraEntryPointVersion> = UserOperationFields<C, V> & {
+  readonly signature: Hex;
+  readonly signatureVerifier: string;
+};
+
 function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
   throw new EraDiagnosticError({ code, severity: "error", kind, message, ...(details ? { details } : {}) });
 }
@@ -183,18 +195,15 @@ function assertBundlerChain<C extends EvmChain>(client: BundlerClientLike, chain
   if (client.chain && client.chain.id !== chain.id) fail("ES3104", "ChainMismatch", "Bundler client chain does not match the UserOperation chain.", { expected: chain.id, actual: client.chain.id });
 }
 
-function validatePaymaster<C extends EvmChain, V extends EraEntryPointVersion>(draft: UserOperationDraft<C, V>): void {
+function validatePaymasterDraft<C extends EvmChain, V extends EraEntryPointVersion>(draft: UserOperationDraft<C, V>): void {
   if (!draft.paymaster) {
     if (draft.paymasterVerificationGasLimit !== undefined || draft.paymasterPostOpGasLimit !== undefined || draft.paymasterData !== undefined || draft.paymasterSignature !== undefined) {
       fail("ES4303", "UnboundPaymasterFields", "Paymaster fields cannot be present without a paymaster address.");
     }
     return;
   }
-  if (draft.paymasterVerificationGasLimit === undefined || draft.paymasterPostOpGasLimit === undefined) {
-    fail("ES4304", "IncompletePaymasterGas", "Paymaster-backed UserOperations must declare verification and postOp gas limits before hashing/signing.");
-  }
-  unsigned(draft.paymasterVerificationGasLimit, "paymasterVerificationGasLimit");
-  unsigned(draft.paymasterPostOpGasLimit, "paymasterPostOpGasLimit");
+  if (draft.paymasterVerificationGasLimit !== undefined) unsigned(draft.paymasterVerificationGasLimit, "paymasterVerificationGasLimit");
+  if (draft.paymasterPostOpGasLimit !== undefined) unsigned(draft.paymasterPostOpGasLimit, "paymasterPostOpGasLimit");
   if (draft.paymasterData !== undefined) validHex(draft.paymasterData, "paymasterData");
   if (draft.paymasterSignature !== undefined) {
     if (draft.entryPoint.version !== "0.9") fail("ES4305", "UnsupportedPaymasterSignature", "Separated paymasterSignature requires EntryPoint v0.9.", { version: draft.entryPoint.version });
@@ -250,20 +259,20 @@ export function createUserOperationDraft<C extends EvmChain, V extends EraEntryP
     ...(input.eip7702Auth ? { eip7702Auth: input.eip7702Auth } : {}),
     signatureStub: validHex(input.signatureStub ?? "0x", "signatureStub"),
   };
-  validatePaymaster(draft);
+  validatePaymasterDraft(draft);
   return draft;
 }
 
-function viemUserOperation<C extends EvmChain, V extends EraEntryPointVersion>(operation: UserOperationDraft<C, V> | PreparedUserOperation<C, V>, signature: Hex): Record<string, unknown> {
+function viemUserOperation<C extends EvmChain, V extends EraEntryPointVersion>(operation: UserOperationFields<C, V>, signature: Hex): Record<string, unknown> {
   return {
     sender: operation.sender,
     nonce: operation.nonce,
     ...(operation.factory ? { factory: operation.factory } : {}),
     ...(operation.factoryData !== undefined ? { factoryData: operation.factoryData } : {}),
     callData: operation.callData,
-    ...("callGasLimit" in operation ? { callGasLimit: operation.callGasLimit } : {}),
-    ...("verificationGasLimit" in operation ? { verificationGasLimit: operation.verificationGasLimit } : {}),
-    ...("preVerificationGas" in operation ? { preVerificationGas: operation.preVerificationGas } : {}),
+    ...(operation.callGasLimit !== undefined ? { callGasLimit: operation.callGasLimit } : {}),
+    ...(operation.verificationGasLimit !== undefined ? { verificationGasLimit: operation.verificationGasLimit } : {}),
+    ...(operation.preVerificationGas !== undefined ? { preVerificationGas: operation.preVerificationGas } : {}),
     maxFeePerGas: operation.maxFeePerGas,
     maxPriorityFeePerGas: operation.maxPriorityFeePerGas,
     ...(operation.paymaster ? { paymaster: operation.paymaster } : {}),
@@ -276,7 +285,7 @@ function viemUserOperation<C extends EvmChain, V extends EraEntryPointVersion>(o
   };
 }
 
-export function userOperationHash<C extends EvmChain, V extends EraEntryPointVersion>(operation: PreparedUserOperation<C, V>): UserOperationHash<C> {
+function computeUserOperationHash<C extends EvmChain, V extends EraEntryPointVersion>(operation: UserOperationFields<C, V>): UserOperationHash<C> {
   const getHash = getUserOperationHash as unknown as (parameters: {
     chainId: number;
     entryPointAddress: string;
@@ -292,6 +301,10 @@ export function userOperationHash<C extends EvmChain, V extends EraEntryPointVer
   return hash(value, "erc4337-userop") as UserOperationHash<C>;
 }
 
+export function userOperationHash<C extends EvmChain, V extends EraEntryPointVersion>(operation: PreparedUserOperation<C, V>): UserOperationHash<C> {
+  return computeUserOperationHash(operation);
+}
+
 export async function prepareUserOperationWithBundler<C extends EvmChain, V extends EraEntryPointVersion>(client: BundlerClientLike, draft: UserOperationDraft<C, V>, options: { stateOverride?: unknown } = {}): Promise<PreparedUserOperation<C, V>> {
   assertBundlerChain(client, draft.entryPoint.chain);
   const estimate = action<Record<string, unknown>, UserOperationGasEstimate>(client, "estimateUserOperationGas");
@@ -303,20 +316,56 @@ export async function prepareUserOperationWithBundler<C extends EvmChain, V exte
   unsigned(result.callGasLimit, "callGasLimit");
   unsigned(result.verificationGasLimit, "verificationGasLimit");
   unsigned(result.preVerificationGas, "preVerificationGas");
+
+  let paymasterVerificationGasLimit = draft.paymasterVerificationGasLimit;
+  let paymasterPostOpGasLimit = draft.paymasterPostOpGasLimit;
   if (draft.paymaster) {
-    if (result.paymasterVerificationGasLimit !== undefined && result.paymasterVerificationGasLimit !== draft.paymasterVerificationGasLimit) fail("ES4311", "PaymasterGasEstimateMismatch", "Bundler paymasterVerificationGasLimit differs from the signed/prepared paymaster value. Rebuild paymaster evidence before signing.", { declared: draft.paymasterVerificationGasLimit?.toString(), estimated: result.paymasterVerificationGasLimit.toString() });
-    if (result.paymasterPostOpGasLimit !== undefined && result.paymasterPostOpGasLimit !== draft.paymasterPostOpGasLimit) fail("ES4311", "PaymasterGasEstimateMismatch", "Bundler paymasterPostOpGasLimit differs from the signed/prepared paymaster value. Rebuild paymaster evidence before signing.", { declared: draft.paymasterPostOpGasLimit?.toString(), estimated: result.paymasterPostOpGasLimit.toString() });
+    if (draft.paymasterVerificationGasLimit !== undefined && result.paymasterVerificationGasLimit !== undefined && result.paymasterVerificationGasLimit !== draft.paymasterVerificationGasLimit) {
+      fail("ES4311", "PaymasterGasEstimateMismatch", "Bundler paymasterVerificationGasLimit differs from the declared paymaster value. Rebuild paymaster evidence before signing.", { declared: draft.paymasterVerificationGasLimit.toString(), estimated: result.paymasterVerificationGasLimit.toString() });
+    }
+    if (draft.paymasterPostOpGasLimit !== undefined && result.paymasterPostOpGasLimit !== undefined && result.paymasterPostOpGasLimit !== draft.paymasterPostOpGasLimit) {
+      fail("ES4311", "PaymasterGasEstimateMismatch", "Bundler paymasterPostOpGasLimit differs from the declared paymaster value. Rebuild paymaster evidence before signing.", { declared: draft.paymasterPostOpGasLimit.toString(), estimated: result.paymasterPostOpGasLimit.toString() });
+    }
+    paymasterVerificationGasLimit ??= result.paymasterVerificationGasLimit;
+    paymasterPostOpGasLimit ??= result.paymasterPostOpGasLimit;
+    if (paymasterVerificationGasLimit === undefined || paymasterPostOpGasLimit === undefined) {
+      fail("ES4304", "IncompletePaymasterGas", "Paymaster-backed UserOperation still lacks verification/postOp gas after Bundler estimation.");
+    }
+    unsigned(paymasterVerificationGasLimit, "paymasterVerificationGasLimit");
+    unsigned(paymasterPostOpGasLimit, "paymasterPostOpGasLimit");
   }
-  const withoutHash = {
-    ...draft,
-    state: "userop-prepared" as const,
+
+  const fields: UserOperationFields<C, V> = {
+    entryPoint: draft.entryPoint,
+    sender: draft.sender,
+    nonce: draft.nonce,
+    ...(draft.factory ? { factory: draft.factory } : {}),
+    ...(draft.factoryData !== undefined ? { factoryData: draft.factoryData } : {}),
+    callData: draft.callData,
+    maxFeePerGas: draft.maxFeePerGas,
+    maxPriorityFeePerGas: draft.maxPriorityFeePerGas,
+    ...(draft.paymaster ? { paymaster: draft.paymaster } : {}),
+    ...(paymasterVerificationGasLimit !== undefined ? { paymasterVerificationGasLimit } : {}),
+    ...(paymasterPostOpGasLimit !== undefined ? { paymasterPostOpGasLimit } : {}),
+    ...(draft.paymasterData !== undefined ? { paymasterData: draft.paymasterData } : {}),
+    ...(draft.paymasterSignature !== undefined ? { paymasterSignature: draft.paymasterSignature } : {}),
+    ...(draft.eip7702Auth ? { eip7702Auth: draft.eip7702Auth } : {}),
+    signatureStub: draft.signatureStub,
     callGasLimit: result.callGasLimit,
     verificationGasLimit: result.verificationGasLimit,
     preVerificationGas: result.preVerificationGas,
+  };
+
+  const userOpHash = computeUserOperationHash(fields);
+  return {
+    state: "userop-prepared",
+    ...fields,
+    callGasLimit: result.callGasLimit,
+    verificationGasLimit: result.verificationGasLimit,
+    preVerificationGas: result.preVerificationGas,
+    userOpHash,
     gasEstimatedWithStateOverride: options.stateOverride !== undefined,
   };
-  const prepared = withoutHash as PreparedUserOperation<C, V>;
-  return { ...prepared, userOpHash: userOperationHash(prepared) };
 }
 
 export async function attachUserOperationSignature<C extends EvmChain, V extends EraEntryPointVersion>(prepared: PreparedUserOperation<C, V>, input: {
@@ -327,31 +376,34 @@ export async function attachUserOperationSignature<C extends EvmChain, V extends
   validHex(input.signature, "signature");
   const verified = await input.verifier({ entryPoint: prepared.entryPoint, sender: prepared.sender, userOpHash: prepared.userOpHash, signature: input.signature, userOperation: prepared });
   if (!verified) fail("ES4312", "UserOperationSignatureVerificationFailed", "Account-defined UserOperation signature verifier rejected the signature.", { sender: prepared.sender, verifier: input.verifierName });
-  const signedBase = { ...prepared, state: "userop-signed" as const, signature: input.signature, signatureVerifier: input.verifierName };
-  return { ...signedBase, submissionPayloadHash: userOperationSubmissionPayloadHash(signedBase) };
+  const signedBase: SignedUserOperationFields<C, V> = { ...prepared, signature: input.signature, signatureVerifier: input.verifierName };
+  return {
+    ...prepared,
+    state: "userop-signed",
+    signature: input.signature,
+    signatureVerifier: input.verifierName,
+    submissionPayloadHash: userOperationSubmissionPayloadHash(signedBase),
+  };
 }
 
-function normalizedSubmission<C extends EvmChain, V extends EraEntryPointVersion>(operation: Omit<SignedUserOperation<C, V>, "submissionPayloadHash">): Record<string, unknown> {
-  const raw = viemUserOperation(operation, operation.signature);
-  const normalize = (value: unknown): unknown => {
-    if (typeof value === "bigint") return value.toString();
-    if (Array.isArray(value)) return value.map(normalize);
-    if (value && typeof value === "object") {
-      const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
-      return Object.fromEntries(entries.map(([key, item]) => [key, normalize(item)]));
-    }
-    return value;
-  };
-  return {
+function normalizeJsonValue(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(normalizeJsonValue);
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+    return Object.fromEntries(entries.map(([key, item]) => [key, normalizeJsonValue(item)]));
+  }
+  return value;
+}
+
+export function userOperationSubmissionPayloadHash<C extends EvmChain, V extends EraEntryPointVersion>(operation: SignedUserOperationFields<C, V>): UserOperationPayloadHash {
+  const normalized = {
     chainId: operation.entryPoint.chain.id,
     entryPoint: operation.entryPoint.address,
     entryPointVersion: operation.entryPoint.version,
-    userOperation: normalize(raw),
+    userOperation: normalizeJsonValue(viemUserOperation(operation, operation.signature)),
   };
-}
-
-export function userOperationSubmissionPayloadHash<C extends EvmChain, V extends EraEntryPointVersion>(operation: Omit<SignedUserOperation<C, V>, "submissionPayloadHash">): UserOperationPayloadHash {
-  return hash(keccak256(stringToHex(JSON.stringify(normalizedSubmission(operation)))), "erc4337-submission") as UserOperationPayloadHash;
+  return hash(keccak256(stringToHex(JSON.stringify(normalized))), "erc4337-submission") as UserOperationPayloadHash;
 }
 
 export async function assertBundlerSupportsEntryPoint<C extends EvmChain, V extends EraEntryPointVersion>(client: BundlerClientLike, entryPoint: EntryPointBinding<C, V>): Promise<void> {
@@ -365,12 +417,13 @@ export async function assertBundlerSupportsEntryPoint<C extends EvmChain, V exte
 export async function submitUserOperationToBundler<C extends EvmChain, V extends EraEntryPointVersion>(client: BundlerClientLike, signed: SignedUserOperation<C, V>): Promise<SubmittedUserOperation<C, V>> {
   await assertBundlerSupportsEntryPoint(client, signed.entryPoint);
   if (signed.gasEstimatedWithStateOverride) fail("ES4314", "HypotheticalUserOperationGasRejected", "UserOperation gas estimated with state override is rejected for submission by default. Re-estimate against real state.");
+  const currentPayloadHash = userOperationSubmissionPayloadHash(signed);
+  if (currentPayloadHash.toLowerCase() !== signed.submissionPayloadHash.toLowerCase()) fail("ES4316", "UserOperationPayloadMutated", "Signed UserOperation payload changed after signature verification.", { signedPayloadHash: signed.submissionPayloadHash, currentPayloadHash });
+
   const send = action<Record<string, unknown>, Hex>(client, "sendUserOperation");
   const returned = await send({ ...viemUserOperation(signed, signed.signature), entryPointAddress: signed.entryPoint.address });
   const checked = hash(returned, "erc4337-userop") as UserOperationHash<C>;
   if (checked.toLowerCase() !== signed.userOpHash.toLowerCase()) fail("ES4315", "BundlerUserOperationHashMismatch", "Bundler returned a UserOperation hash different from EraScript's locally computed hash.", { local: signed.userOpHash, returned: checked });
-  const currentPayloadHash = userOperationSubmissionPayloadHash(signed);
-  if (currentPayloadHash.toLowerCase() !== signed.submissionPayloadHash.toLowerCase()) fail("ES4316", "UserOperationPayloadMutated", "Signed UserOperation payload changed after signature verification.", { signedPayloadHash: signed.submissionPayloadHash, currentPayloadHash });
   return { ...signed, state: "userop-submitted", submittedAt: Date.now() };
 }
 
@@ -390,7 +443,7 @@ export async function getUserOperationReceiptFromBundler<C extends EvmChain, V e
     sender: submitted.sender,
     nonce: submitted.nonce,
     entryPoint: submitted.entryPoint.address,
-    ...(receipt.paymaster ? { paymaster: receipt.paymaster as Address<C> } : {}),
+    ...(receipt.paymaster ? { paymaster: address(receipt.paymaster, submitted.entryPoint.chain, "userOperation.receipt.paymaster") } : {}),
     success: receipt.success,
     ...(receipt.reason ? { reason: receipt.reason } : {}),
     actualGasCost: unsigned(receipt.actualGasCost, "actualGasCost"),
@@ -403,23 +456,19 @@ export async function getUserOperationReceiptFromBundler<C extends EvmChain, V e
   return { ...submitted, state: "userop-included", execution: evidence as UserOperationExecutionEvidence<C> & { success: true } };
 }
 
-function publicAction<A, R>(client: BundlerClientLike, name: string): (args: A) => Promise<R> {
-  return action<A, R>(client, name);
-}
-
 export async function confirmUserOperationFromRpc<C extends EvmChain, V extends EraEntryPointVersion>(client: BundlerClientLike, included: IncludedUserOperation<C, V>, confirmations: number): Promise<ConfirmedUserOperation<C, V>> {
   if (!Number.isSafeInteger(confirmations) || confirmations < 1) fail("ES4321", "InvalidUserOperationConfirmationCount", "UserOperation confirmation count must be a positive safe integer.", { confirmations });
-  const canonical = await publicAction<{ blockNumber: bigint }, { number: bigint | null; hash: string | null }>(client, "getBlock")({ blockNumber: included.execution.blockNumber });
+  const canonical = await action<{ blockNumber: bigint }, { number: bigint | null; hash: string | null }>(client, "getBlock")({ blockNumber: included.execution.blockNumber });
   if (!canonical.hash || canonical.hash.toLowerCase() !== included.execution.blockHash.toLowerCase()) fail("ES4322", "UserOperationReorgDetected", "UserOperation execution block is no longer canonical.", { blockNumber: included.execution.blockNumber.toString(), expected: included.execution.blockHash, actual: canonical.hash ?? null });
-  const observed = await publicAction<{ hash: Hex }, bigint>(client, "getTransactionConfirmations")({ hash: included.execution.outerTransactionHash });
+  const observed = await action<{ hash: Hex }, bigint>(client, "getTransactionConfirmations")({ hash: included.execution.outerTransactionHash });
   if (observed < BigInt(confirmations)) fail("ES4323", "InsufficientUserOperationConfirmations", "UserOperation execution transaction has not reached the required confirmation count.", { required: confirmations, observed: observed.toString() });
   return { ...included, state: "userop-confirmed", confirmations };
 }
 
 export async function finalizeUserOperationFromRpc<C extends EvmChain, V extends EraEntryPointVersion>(client: BundlerClientLike, confirmed: ConfirmedUserOperation<C, V>): Promise<FinalizedUserOperation<C, V>> {
-  const canonical = await publicAction<{ blockNumber: bigint }, { number: bigint | null; hash: string | null }>(client, "getBlock")({ blockNumber: confirmed.execution.blockNumber });
+  const canonical = await action<{ blockNumber: bigint }, { number: bigint | null; hash: string | null }>(client, "getBlock")({ blockNumber: confirmed.execution.blockNumber });
   if (!canonical.hash || canonical.hash.toLowerCase() !== confirmed.execution.blockHash.toLowerCase()) fail("ES4322", "UserOperationReorgDetected", "UserOperation execution block is no longer canonical.");
-  const finalized = await publicAction<{ blockTag: "finalized" }, { number: bigint | null; hash: string | null }>(client, "getBlock")({ blockTag: "finalized" });
+  const finalized = await action<{ blockTag: "finalized" }, { number: bigint | null; hash: string | null }>(client, "getBlock")({ blockTag: "finalized" });
   if (finalized.number === null) fail("ES4324", "FinalizedBlockUnavailable", "RPC did not return a concrete finalized block number for UserOperation verification.");
   if (finalized.number < confirmed.execution.blockNumber) fail("ES4325", "UserOperationNotFinalized", "UserOperation execution block has not reached finalized state.", { executionBlock: confirmed.execution.blockNumber.toString(), finalizedBlock: finalized.number.toString() });
   return { ...confirmed, state: "userop-finalized" };
