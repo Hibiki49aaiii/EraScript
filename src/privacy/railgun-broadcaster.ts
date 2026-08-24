@@ -16,7 +16,7 @@ export interface RailgunWakuBroadcasterClientLike {
 }
 
 export interface RailgunBroadcasterTransactionLike {
-  create(...args: readonly unknown[]): Promise<unknown>;
+  create(...args: unknown[]): Promise<unknown>;
   send(transaction: unknown): Promise<unknown>;
 }
 
@@ -100,7 +100,7 @@ export function attachSelectedRailgunBroadcasterFee<C extends EvmChain>(gas: Rai
     feeAmount: input.feeAmount,
     feeRecipient: input.feeRecipient,
     expiresAtMs: input.expiresAtMs,
-    nowMs: input.nowMs,
+    ...(input.nowMs !== undefined ? { nowMs: input.nowMs } : {}),
   });
 }
 
@@ -137,5 +137,9 @@ export async function submitRailgunWithBroadcaster<C extends EvmChain>(input: {
   const response = object(raw, "Broadcaster transaction response");
   const txHash = response.txHash ?? response.transactionHash;
   if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) fail("ES4520", "MalformedRailgunBroadcasterResponse", "Broadcaster submission did not return a 32-byte EVM transaction hash.");
-  return markRailgunSubmitted(input.populated.transaction, { submission: "broadcaster", submissionId: txHash, submittedAtMs: input.submittedAtMs });
+  return markRailgunSubmitted(input.populated.transaction, {
+    submission: "broadcaster",
+    submissionId: txHash,
+    ...(input.submittedAtMs !== undefined ? { submittedAtMs: input.submittedAtMs } : {}),
+  });
 }
