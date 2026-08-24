@@ -6,13 +6,19 @@ import { hash } from "../web3/types.js";
 const railgunBrand: unique symbol = Symbol("railgunBrand");
 export type RailgunAddress = string & { readonly [railgunBrand]: "RailgunAddress" };
 
+export interface RailgunPrivateTransfer {
+  readonly recipient: RailgunAddress;
+  readonly token: `0x${string}`;
+  readonly amount: bigint;
+}
+
 export interface RailgunIntent<C extends EvmChain = EvmChain> {
   readonly state: "railgun-intent";
+  readonly operation: "private-transfer";
   readonly chain: C;
   readonly txidVersion: string;
   readonly walletId: string;
-  readonly recipients: readonly RailgunAddress[];
-  readonly tokenAmounts: readonly { readonly token: `0x${string}`; readonly amount: bigint }[];
+  readonly transfers: readonly RailgunPrivateTransfer[];
   readonly memo?: string;
   readonly sendWithPublicWallet: boolean;
   readonly intentHash: Hash<"railgun-intent">;
@@ -31,7 +37,8 @@ export interface RailgunBroadcasterFeeEvidence<C extends EvmChain = EvmChain> ex
   readonly feeToken: `0x${string}`;
   readonly feeAmount: bigint;
   readonly feeRecipient: RailgunAddress;
-  readonly expiresAt: number;
+  /** EraScript adapters normalize provider quote expiry to Unix milliseconds. */
+  readonly expiresAtMs: number;
   readonly feeBindingHash: Hash<"railgun-fee-binding">;
 }
 
@@ -40,8 +47,8 @@ export interface RailgunProofEvidence<C extends EvmChain = EvmChain> {
   readonly chain: C;
   readonly proofId: string;
   readonly proofBindingHash: Hash<"railgun-proof-binding">;
-  readonly generatedAt: number;
-  readonly broadcasterFeeExpiresAt?: number;
+  readonly generatedAtMs: number;
+  readonly broadcasterFeeExpiresAtMs?: number;
   readonly sendWithPublicWallet: boolean;
 }
 
@@ -56,7 +63,7 @@ export interface RailgunPopulatedTransaction<C extends EvmChain = EvmChain> {
 export interface RailgunSubmittedTransaction<C extends EvmChain = EvmChain> extends Omit<RailgunPopulatedTransaction<C>, "state"> {
   readonly state: "railgun-submitted";
   readonly submission: "broadcaster" | "self";
-  readonly submittedAt: number;
+  readonly submittedAtMs: number;
   readonly submissionId?: string;
 }
 
@@ -86,37 +93,34 @@ export function createRailgunIntent<C extends EvmChain>(input: {
   chain: C;
   txidVersion: string;
   walletId: string;
-  recipients: readonly RailgunAddress[];
-  tokenAmounts: readonly { readonly token: `0x${string}`; readonly amount: bigint }[];
+  transfers: readonly RailgunPrivateTransfer[];
   memo?: string;
   sendWithPublicWallet?: boolean;
 }): RailgunIntent<C> {
   if (!input.txidVersion) fail("ES4431", "MissingRailgunTxidVersion", "RAILGUN intent must bind an explicit TXID version.");
   if (!input.walletId) fail("ES4432", "MissingRailgunWalletId", "RAILGUN intent must bind a wallet ID.");
-  if (input.recipients.length === 0) fail("ES4433", "EmptyRailgunRecipients", "RAILGUN private transfer must contain at least one recipient.");
-  if (input.tokenAmounts.length === 0) fail("ES4434", "EmptyRailgunAmounts", "RAILGUN private transfer must contain at least one token amount.");
-  if (input.recipients.length !== input.tokenAmounts.length) fail("ES4435", "RailgunRecipientAmountMismatch", "RAILGUN normalized intent requires one token amount entry per recipient entry.", { recipients: input.recipients.length, tokenAmounts: input.tokenAmounts.length });
-  for (const row of input.tokenAmounts) {
-    if (!/^0x[0-9a-fA-F]{40}$/.test(row.token)) fail("ES4436", "InvalidRailgunTokenAddress", "RAILGUN token address must be a 20-byte EVM address.", { token: row.token });
-    if (row.amount < 0n) fail("ES4437", "InvalidRailgunTokenAmount", "RAILGUN token amounts cannot be negative.", { amount: row.amount.toString() });
+  if (input.transfers.length === 0) fail("ES4433", "EmptyRailgunTransfers", "RAILGUN private transfer must contain at least one transfer.");
+  for (const [index, transfer] of input.transfers.entries()) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(transfer.token)) fail("ES4436", "InvalidRailgunTokenAddress", "RAILGUN token address must be a 20-byte EVM address.", { index, token: transfer.token });
+    if (transfer.amount < 0n) fail("ES4437", "InvalidRailgunTokenAmount", "RAILGUN token amounts cannot be negative.", { index, amount: transfer.amount.toString() });
   }
   const sendWithPublicWallet = input.sendWithPublicWallet ?? false;
   const canonical = {
+    operation: "private-transfer",
     chainId: input.chain.id,
     txidVersion: input.txidVersion,
     walletId: input.walletId,
-    recipients: input.recipients,
-    tokenAmounts: input.tokenAmounts,
+    transfers: input.transfers.map((transfer) => ({ ...transfer, token: transfer.token.toLowerCase() })),
     memo: input.memo ?? null,
     sendWithPublicWallet,
   };
   return {
     state: "railgun-intent",
+    operation: "private-transfer",
     chain: input.chain,
     txidVersion: input.txidVersion,
     walletId: input.walletId,
-    recipients: input.recipients,
-    tokenAmounts: input.tokenAmounts,
+    transfers: input.transfers,
     ...(input.memo !== undefined ? { memo: input.memo } : {}),
     sendWithPublicWallet,
     intentHash: binding("railgun-intent", canonical),
@@ -141,21 +145,21 @@ export function attachRailgunBroadcasterFee<C extends EvmChain>(gas: RailgunGasE
   feeToken: `0x${string}`;
   feeAmount: bigint;
   feeRecipient: RailgunAddress;
-  expiresAt: number;
-  now?: number;
+  expiresAtMs: number;
+  nowMs?: number;
 }): RailgunBroadcasterFeeEvidence<C> {
   if (gas.sendWithPublicWallet) fail("ES4439", "UnexpectedRailgunBroadcasterFee", "Broadcaster fee evidence cannot be attached to a self-submit RAILGUN intent.");
   if (!input.broadcasterId) fail("ES4440", "MissingRailgunBroadcaster", "Broadcaster quote must identify the selected Broadcaster.");
   if (!/^0x[0-9a-fA-F]{40}$/.test(input.feeToken)) fail("ES4441", "InvalidRailgunFeeToken", "Broadcaster fee token must be an EVM token address.");
   if (input.feeAmount < 0n) fail("ES4442", "InvalidRailgunFeeAmount", "Broadcaster fee amount cannot be negative.");
-  if (!Number.isSafeInteger(input.expiresAt) || input.expiresAt <= (input.now ?? Date.now())) fail("ES4443", "ExpiredRailgunBroadcasterFee", "Broadcaster fee quote is already expired or has an invalid expiry.", { expiresAt: input.expiresAt });
+  if (!Number.isSafeInteger(input.expiresAtMs) || input.expiresAtMs <= (input.nowMs ?? Date.now())) fail("ES4443", "ExpiredRailgunBroadcasterFee", "Broadcaster fee quote is already expired or has an invalid expiry.", { expiresAtMs: input.expiresAtMs });
   const feeBindingHash = binding("railgun-fee-binding", {
     gasBindingHash: gas.gasBindingHash,
     broadcasterId: input.broadcasterId,
     feeToken: input.feeToken.toLowerCase(),
     feeAmount: input.feeAmount,
     feeRecipient: input.feeRecipient,
-    expiresAt: input.expiresAt,
+    expiresAtMs: input.expiresAtMs,
   });
   return {
     ...gas,
@@ -164,19 +168,19 @@ export function attachRailgunBroadcasterFee<C extends EvmChain>(gas: RailgunGasE
     feeToken: input.feeToken,
     feeAmount: input.feeAmount,
     feeRecipient: input.feeRecipient,
-    expiresAt: input.expiresAt,
+    expiresAtMs: input.expiresAtMs,
     feeBindingHash,
   };
 }
 
 export function createRailgunProofEvidence<C extends EvmChain>(source: RailgunGasEvidence<C> | RailgunBroadcasterFeeEvidence<C>, input: {
   proofId: string;
-  generatedAt?: number;
+  generatedAtMs?: number;
 }): RailgunProofEvidence<C> {
   if (!input.proofId) fail("ES4444", "MissingRailgunProofId", "Generated RAILGUN proof evidence requires a stable proof identifier.");
   if (!source.sendWithPublicWallet && source.state !== "railgun-broadcaster-fee-quoted") fail("ES4445", "RailgunBroadcasterFeeRequired", "Broadcaster RAILGUN proof generation requires a current broadcaster fee quote.");
-  const generatedAt = input.generatedAt ?? Date.now();
-  if (source.state === "railgun-broadcaster-fee-quoted" && generatedAt >= source.expiresAt) fail("ES4443", "ExpiredRailgunBroadcasterFee", "Broadcaster fee expired before proof generation completed.", { generatedAt, expiresAt: source.expiresAt });
+  const generatedAtMs = input.generatedAtMs ?? Date.now();
+  if (source.state === "railgun-broadcaster-fee-quoted" && generatedAtMs >= source.expiresAtMs) fail("ES4443", "ExpiredRailgunBroadcasterFee", "Broadcaster fee expired before proof generation completed.", { generatedAtMs, expiresAtMs: source.expiresAtMs });
   const proofBindingHash = binding("railgun-proof-binding", {
     base: source.state === "railgun-broadcaster-fee-quoted" ? source.feeBindingHash : source.gasBindingHash,
     proofId: input.proofId,
@@ -186,19 +190,19 @@ export function createRailgunProofEvidence<C extends EvmChain>(source: RailgunGa
     chain: source.chain,
     proofId: input.proofId,
     proofBindingHash,
-    generatedAt,
-    ...(source.state === "railgun-broadcaster-fee-quoted" ? { broadcasterFeeExpiresAt: source.expiresAt } : {}),
+    generatedAtMs,
+    ...(source.state === "railgun-broadcaster-fee-quoted" ? { broadcasterFeeExpiresAtMs: source.expiresAtMs } : {}),
     sendWithPublicWallet: source.sendWithPublicWallet,
   };
 }
 
-export function assertRailgunProofFresh<C extends EvmChain>(proof: RailgunProofEvidence<C>, now = Date.now()): RailgunProofEvidence<C> {
-  if (proof.broadcasterFeeExpiresAt !== undefined && now >= proof.broadcasterFeeExpiresAt) fail("ES4446", "RailgunProofFeeBindingExpired", "RAILGUN proof is bound to an expired Broadcaster fee quote and must be regenerated.", { proofId: proof.proofId, expiresAt: proof.broadcasterFeeExpiresAt, now });
+export function assertRailgunProofFresh<C extends EvmChain>(proof: RailgunProofEvidence<C>, nowMs = Date.now()): RailgunProofEvidence<C> {
+  if (proof.broadcasterFeeExpiresAtMs !== undefined && nowMs >= proof.broadcasterFeeExpiresAtMs) fail("ES4446", "RailgunProofFeeBindingExpired", "RAILGUN proof is bound to an expired Broadcaster fee quote and must be regenerated.", { proofId: proof.proofId, expiresAtMs: proof.broadcasterFeeExpiresAtMs, nowMs });
   return proof;
 }
 
-export function populateRailgunTransaction<C extends EvmChain>(proof: RailgunProofEvidence<C>, serializedTransaction: Hex, now = Date.now()): RailgunPopulatedTransaction<C> {
-  assertRailgunProofFresh(proof, now);
+export function populateRailgunTransaction<C extends EvmChain>(proof: RailgunProofEvidence<C>, serializedTransaction: Hex, nowMs = Date.now()): RailgunPopulatedTransaction<C> {
+  assertRailgunProofFresh(proof, nowMs);
   if (!/^0x(?:[0-9a-fA-F]{2})+$/.test(serializedTransaction)) fail("ES4447", "InvalidRailgunPopulatedTransaction", "RAILGUN populated transaction must be non-empty whole-byte hexadecimal.");
   return {
     state: "railgun-populated",
@@ -212,10 +216,11 @@ export function populateRailgunTransaction<C extends EvmChain>(proof: RailgunPro
 export function markRailgunSubmitted<C extends EvmChain>(transaction: RailgunPopulatedTransaction<C>, input: {
   submission: "broadcaster" | "self";
   submissionId?: string;
-  submittedAt?: number;
+  submittedAtMs?: number;
 }): RailgunSubmittedTransaction<C> {
   if (transaction.proof.sendWithPublicWallet && input.submission !== "self") fail("ES4448", "RailgunSubmissionModeMismatch", "Self-submit RAILGUN proof cannot be submitted through a Broadcaster.");
   if (!transaction.proof.sendWithPublicWallet && input.submission !== "broadcaster") fail("ES4448", "RailgunSubmissionModeMismatch", "Broadcaster-bound RAILGUN proof cannot be silently switched to self submission.");
-  assertRailgunProofFresh(transaction.proof, input.submittedAt ?? Date.now());
-  return { ...transaction, state: "railgun-submitted", submission: input.submission, submittedAt: input.submittedAt ?? Date.now(), ...(input.submissionId ? { submissionId: input.submissionId } : {}) };
+  const submittedAtMs = input.submittedAtMs ?? Date.now();
+  assertRailgunProofFresh(transaction.proof, submittedAtMs);
+  return { ...transaction, state: "railgun-submitted", submission: input.submission, submittedAtMs, ...(input.submissionId ? { submissionId: input.submissionId } : {}) };
 }
