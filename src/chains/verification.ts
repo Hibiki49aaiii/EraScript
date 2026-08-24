@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { EraDiagnosticError } from "../diagnostics.js";
-import type { ExecutionBackendKind, ChainFamily, ChainProfile } from "./types.js";
+import type { ExecutionBackendKind, ChainFamily, ChainProfile, ProtocolOverlayDescriptor } from "./types.js";
 
 export type MultichainVerificationState = "NOT_READY" | "READY_FOR_SUBMISSION" | "EXECUTION_OBSERVED" | "VERIFIED_FINALITY";
 export type MultichainVerificationStatus = "pass" | "warning" | "fail";
+
+const BACKENDS = new Set<ExecutionBackendKind>([
+  "public-rpc", "private-rpc", "flashbots-bundle", "jito-bundle", "railgun-broadcaster", "railgun-self-submit", "sui-rpc", "custom",
+]);
 
 export interface MultichainVerificationCheck {
   readonly id: string;
@@ -24,6 +28,7 @@ export interface MultichainVerificationReport {
   readonly profileId: string;
   readonly network: string;
   readonly backend: ExecutionBackendKind;
+  readonly overlayId?: string;
   readonly subject: string;
   readonly state: MultichainVerificationState;
   readonly checks: readonly MultichainVerificationCheck[];
@@ -65,6 +70,7 @@ export function multichainVerificationReportHash(input: Omit<MultichainVerificat
     profileId: input.profileId,
     network: input.network,
     backend: input.backend,
+    overlayId: input.overlayId ?? null,
     subject: input.subject,
     state: input.state,
     checks: input.checks,
@@ -75,17 +81,31 @@ export function multichainVerificationReportHash(input: Omit<MultichainVerificat
 export function createMultichainVerificationReport(input: {
   profile: ChainProfile;
   backend: ExecutionBackendKind;
+  overlay?: ProtocolOverlayDescriptor;
   subject: string;
   state: MultichainVerificationState;
   checks: readonly MultichainVerificationCheck[];
   evidence?: readonly MultichainEvidenceRef[];
 }): MultichainVerificationReport {
-  if (!input.profile.executionBackends.includes(input.backend)) fail("ES4551", "VerificationBackendNotEnabled", "Verification report backend is not enabled by the selected chain profile.", { profile: input.profile.id, backend: input.backend });
+  const profileEnabled = input.profile.executionBackends.includes(input.backend);
+  const overlayEnabled = input.overlay !== undefined && input.overlay.baseFamilies.includes(input.profile.family) && input.overlay.executionBackends.includes(input.backend);
+  if (input.overlay && !overlayEnabled) fail("ES4556", "VerificationOverlayMismatch", "Protocol overlay does not support the selected chain family/backend.", { overlay: input.overlay.id, family: input.profile.family, backend: input.backend });
+  if (!profileEnabled && !overlayEnabled) fail("ES4551", "VerificationBackendNotEnabled", "Verification report backend is not enabled by the selected chain profile or protocol overlay.", { profile: input.profile.id, backend: input.backend });
   if (!input.subject) fail("ES4552", "MissingVerificationSubject", "Verification report requires a stable subject identifier.");
   const evidence = input.evidence ?? [];
   const failed = input.checks.some((check) => check.status === "fail");
   const state = failed ? "NOT_READY" : input.state;
-  const reportCore = { family: input.profile.family, profileId: input.profile.id, network: input.profile.network, backend: input.backend, subject: input.subject, state, checks: input.checks, evidence } as const;
+  const reportCore = {
+    family: input.profile.family,
+    profileId: input.profile.id,
+    network: input.profile.network,
+    backend: input.backend,
+    ...(input.overlay ? { overlayId: input.overlay.id } : {}),
+    subject: input.subject,
+    state,
+    checks: input.checks,
+    evidence,
+  } as const;
   return { kind: "multichain-verification-report", ...reportCore, reportHash: multichainVerificationReportHash(reportCore), ...stateFlags(state) };
 }
 
@@ -94,9 +114,10 @@ export function parseMultichainVerificationReport(value: unknown): MultichainVer
   const record = value as Record<string, unknown>;
   if (record.kind !== "multichain-verification-report") fail("ES4553", "InvalidMultichainVerificationReport", "Unsupported multichain verification report kind.");
   if (record.family !== "evm" && record.family !== "solana" && record.family !== "sui") fail("ES4553", "InvalidMultichainVerificationReport", "Verification report has an invalid chain family.");
-  if (typeof record.profileId !== "string" || typeof record.network !== "string" || typeof record.backend !== "string" || typeof record.subject !== "string") fail("ES4553", "InvalidMultichainVerificationReport", "Verification report identity fields must be strings.");
+  if (typeof record.profileId !== "string" || typeof record.network !== "string" || typeof record.backend !== "string" || !BACKENDS.has(record.backend as ExecutionBackendKind) || typeof record.subject !== "string") fail("ES4553", "InvalidMultichainVerificationReport", "Verification report identity fields are malformed.");
+  if (record.overlayId !== undefined && typeof record.overlayId !== "string") fail("ES4553", "InvalidMultichainVerificationReport", "Verification report overlayId must be a string when present.");
   if (record.state !== "NOT_READY" && record.state !== "READY_FOR_SUBMISSION" && record.state !== "EXECUTION_OBSERVED" && record.state !== "VERIFIED_FINALITY") fail("ES4553", "InvalidMultichainVerificationReport", "Verification report has an invalid state.");
-  if (!Array.isArray(record.checks) || !Array.isArray(record.evidence) || typeof record.reportHash !== "string") fail("ES4553", "InvalidMultichainVerificationReport", "Verification report checks/evidence/reportHash are malformed.");
+  if (!Array.isArray(record.checks) || !Array.isArray(record.evidence) || typeof record.reportHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(record.reportHash)) fail("ES4553", "InvalidMultichainVerificationReport", "Verification report checks/evidence/reportHash are malformed.");
 
   const checks: MultichainVerificationCheck[] = record.checks.map((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) fail("ES4553", "InvalidMultichainVerificationReport", "Verification check must be an object.", { index });
@@ -107,7 +128,7 @@ export function parseMultichainVerificationReport(value: unknown): MultichainVer
   const evidence: MultichainEvidenceRef[] = record.evidence.map((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) fail("ES4553", "InvalidMultichainVerificationReport", "Evidence reference must be an object.", { index });
     const evidenceRecord = item as Record<string, unknown>;
-    if (typeof evidenceRecord.kind !== "string" || typeof evidenceRecord.hash !== "string") fail("ES4553", "InvalidMultichainVerificationReport", "Evidence reference fields are malformed.", { index });
+    if (typeof evidenceRecord.kind !== "string" || typeof evidenceRecord.hash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(evidenceRecord.hash)) fail("ES4553", "InvalidMultichainVerificationReport", "Evidence reference fields are malformed.", { index });
     return { kind: evidenceRecord.kind, hash: evidenceRecord.hash, ...(typeof evidenceRecord.source === "string" ? { source: evidenceRecord.source } : {}) };
   });
   const core = {
@@ -115,6 +136,7 @@ export function parseMultichainVerificationReport(value: unknown): MultichainVer
     profileId: record.profileId,
     network: record.network,
     backend: record.backend as ExecutionBackendKind,
+    ...(record.overlayId !== undefined ? { overlayId: record.overlayId } : {}),
     subject: record.subject,
     state: record.state,
     checks,
