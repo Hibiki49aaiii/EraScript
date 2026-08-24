@@ -73,6 +73,10 @@ function combinedDiagnostics(checked: CheckResult): EraDiagnostic[] {
   ];
 }
 
+function checkExtra(checked: CheckResult): Record<string, unknown> {
+  return { features: checked.features, unsafeBoundaries: checked.unsafeBoundaries };
+}
+
 function failDiagnostics(diagnostics: readonly EraDiagnostic[], json = false, extra: Record<string, unknown> = {}): never {
   if (json) {
     console.log(diagnosticsJson(diagnostics, extra));
@@ -89,7 +93,7 @@ function failEra(error: EraDiagnosticError, json = false, extra: Record<string, 
 function ensureChecked(checked: CheckResult, json = false): void {
   const diagnostics = combinedDiagnostics(checked);
   const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-  if (errors.length) failDiagnostics(diagnostics, json, { features: checked.features });
+  if (errors.length) failDiagnostics(diagnostics, json, checkExtra(checked));
 
   if (!json) {
     for (const diagnostic of diagnostics) console.error(formatEraDiagnostic(diagnostic));
@@ -191,11 +195,13 @@ function verifyReport(file: string, args: string[]): never {
       integrityOnly,
       required: integrityOnly ? null : requiredVerificationState(args),
       checks: report.checks,
+      unsafeBoundaries: report.unsafeBoundaries ?? [],
     }, null, 2));
   } else {
     console.log(`VERIFIED ${file}`);
     console.log(`State: ${report.state}`);
     console.log(`Report hash: ${report.reportHash}`);
+    console.log(`Unsafe boundaries: ${report.unsafeBoundaries?.length ?? 0}`);
     console.log(integrityOnly ? "Gate: integrity only" : `Gate: ${requiredVerificationState(args)} or stronger`);
   }
   process.exit(0);
@@ -224,12 +230,13 @@ switch (command) {
     const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
 
     if (json) {
-      console.log(diagnosticsJson(diagnostics, { features: checked.features }));
+      console.log(diagnosticsJson(diagnostics, checkExtra(checked)));
       process.exit(hasErrors ? 1 : 0);
     }
 
     if (hasErrors) failDiagnostics(diagnostics);
     for (const diagnostic of diagnostics) console.error(formatEraDiagnostic(diagnostic));
+    if (checked.unsafeBoundaries.length > 0) console.log(`Unsafe boundaries: ${checked.unsafeBoundaries.length}`);
     console.log(`OK ${file}`);
     break;
   }
