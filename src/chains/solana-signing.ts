@@ -6,7 +6,12 @@ import {
   type VerifiedMultichainSignature,
 } from "./external-signer.js";
 import { solanaAddress, type SolanaAddress } from "./solana.js";
-import type { SolanaVerifiedPreparedTransaction } from "./solana-adapter.js";
+import {
+  prepareSolanaSerializedTransaction,
+  verifySolanaSerializedTransaction,
+  type SolanaTransactionInspector,
+  type SolanaVerifiedPreparedTransaction,
+} from "./solana-adapter.js";
 import type { SolanaChainProfile } from "./types.js";
 
 export interface SolanaSigningInspection {
@@ -45,6 +50,21 @@ export interface SolanaSignatureSetEvidence {
   readonly evidenceHash: string;
 }
 
+export interface SolanaSignedTransactionAssembler {
+  assemble(input: {
+    readonly serializedTransaction: Uint8Array;
+    readonly signatures: readonly { readonly signer: SolanaAddress; readonly signature: string }[];
+  }): string | Promise<string>;
+}
+
+export interface SolanaAssembledSignedTransaction {
+  readonly kind: "solana-assembled-signed-transaction";
+  readonly source: SolanaVerifiedPreparedTransaction;
+  readonly signatureSet: SolanaSignatureSetEvidence;
+  readonly transaction: SolanaVerifiedPreparedTransaction;
+  readonly assemblyHash: string;
+}
+
 function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
   throw new EraDiagnosticError({ code, severity: "error", kind, message, ...(details ? { details } : {}) });
 }
@@ -59,6 +79,9 @@ function sha256(value: string): string {
 }
 function base64Bytes(value: string): Uint8Array {
   return Buffer.from(canonicalBase64(value), "base64");
+}
+function sameSigners(a: readonly SolanaAddress[], b: readonly SolanaAddress[]): boolean {
+  return a.length === b.length && a.every((signer, index) => signer === b[index]);
 }
 
 export async function createSolanaSigningPlan(profile: SolanaChainProfile, transaction: SolanaVerifiedPreparedTransaction, inspector: SolanaSigningInspector): Promise<SolanaSigningPlan> {
@@ -119,4 +142,48 @@ export function bindSolanaVerifiedSignatures(plan: SolanaSigningPlan, requests: 
     signatures: bound.map((entry) => ({ signer: entry.signer, role: entry.role, signature: entry.signature.response.signature })),
   }));
   return { kind: "solana-signature-set-evidence", plan, signatures: bound, complete: true, evidenceHash };
+}
+
+export async function assembleAndVerifySolanaSignedTransaction(input: {
+  profile: SolanaChainProfile;
+  source: SolanaVerifiedPreparedTransaction;
+  signatureSet: SolanaSignatureSetEvidence;
+  assembler: SolanaSignedTransactionAssembler;
+  transactionInspector: SolanaTransactionInspector;
+  signingInspector: SolanaSigningInspector;
+}): Promise<SolanaAssembledSignedTransaction> {
+  if (input.source.profileId !== input.profile.id || input.signatureSet.plan.profileId !== input.profile.id) fail("ES4630", "SolanaAssemblySourceMismatch", "Solana source transaction/signature set belong to a different chain profile.", { profile: input.profile.id, sourceProfile: input.source.profileId, signingProfile: input.signatureSet.plan.profileId });
+  if (input.signatureSet.plan.transactionBindingHash !== input.source.bindingHash) fail("ES4630", "SolanaAssemblySourceMismatch", "Solana signature set was produced for a different transaction binding.", { sourceBindingHash: input.source.bindingHash, signatureBindingHash: input.signatureSet.plan.transactionBindingHash });
+
+  let assembledBase64: string;
+  try {
+    assembledBase64 = canonicalBase64(await input.assembler.assemble({
+      serializedTransaction: base64Bytes(input.source.serializedBase64),
+      signatures: input.signatureSet.signatures.map((entry) => ({ signer: entry.signer, signature: entry.signature.response.signature })),
+    }));
+  } catch (error) {
+    if (error instanceof EraDiagnosticError) throw error;
+    return fail("ES4631", "SolanaTransactionAssemblyFailed", "Failed to assemble verified Solana signatures into the wire transaction.", { cause: error instanceof Error ? error.message : String(error) });
+  }
+
+  const prepared = prepareSolanaSerializedTransaction({
+    profile: input.profile,
+    serializedBase64: assembledBase64,
+    version: input.source.version,
+    recentBlockhash: input.source.recentBlockhash,
+  });
+  const transaction = await verifySolanaSerializedTransaction(prepared, input.transactionInspector);
+  const assembledPlan = await createSolanaSigningPlan(input.profile, transaction, input.signingInspector);
+
+  if (assembledPlan.signingPayloadBase64 !== input.signatureSet.plan.signingPayloadBase64 || assembledPlan.payloadHash !== input.signatureSet.plan.payloadHash) fail("ES4632", "SolanaAssembledPayloadMismatch", "Final signed Solana wire transaction contains message bytes different from those authorized by the signers.", { expectedPayloadHash: input.signatureSet.plan.payloadHash, actualPayloadHash: assembledPlan.payloadHash });
+  if (!sameSigners(assembledPlan.requiredSigners, input.signatureSet.plan.requiredSigners)) fail("ES4633", "SolanaAssembledSignerSetMismatch", "Final signed Solana wire transaction has a different required signer sequence.", { expected: input.signatureSet.plan.requiredSigners, actual: assembledPlan.requiredSigners });
+  if (assembledPlan.feePayer !== input.signatureSet.plan.feePayer) fail("ES4634", "SolanaAssembledFeePayerMismatch", "Final signed Solana wire transaction has a different fee payer.", { expected: input.signatureSet.plan.feePayer, actual: assembledPlan.feePayer });
+
+  return {
+    kind: "solana-assembled-signed-transaction",
+    source: input.source,
+    signatureSet: input.signatureSet,
+    transaction,
+    assemblyHash: sha256(JSON.stringify({ sourceBindingHash: input.source.bindingHash, signatureEvidenceHash: input.signatureSet.evidenceHash, finalBindingHash: transaction.bindingHash, serializedBase64: assembledBase64 })),
+  };
 }
