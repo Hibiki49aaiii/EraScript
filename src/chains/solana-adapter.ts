@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { EraDiagnosticError } from "../diagnostics.js";
 import {
   assertSolanaBlockhashFresh,
+  solanaBlockhash,
   solanaRecentBlockhash,
   solanaTransactionSignature,
+  type SolanaBlockhash,
   type SolanaCommitment,
   type SolanaRecentBlockhashEvidence,
   type SolanaTransactionSignature,
@@ -25,6 +27,14 @@ export interface SolanaKitRpcLike {
 }
 export interface SolanaKitClientLike { readonly rpc: SolanaKitRpcLike; }
 
+export interface SolanaTransactionInspection {
+  readonly version: SolanaTransactionVersion;
+  readonly recentBlockhash: SolanaBlockhash;
+  readonly signerCount?: number;
+}
+
+export type SolanaTransactionInspector = (serializedTransaction: Uint8Array) => SolanaTransactionInspection | Promise<SolanaTransactionInspection>;
+
 export interface SolanaPreparedTransaction {
   readonly state: "solana-prepared";
   readonly profileId: string;
@@ -32,10 +42,17 @@ export interface SolanaPreparedTransaction {
   readonly serializedBase64: string;
   readonly bindingHash: SolanaTransactionBindingHash;
   readonly recentBlockhash: SolanaRecentBlockhashEvidence;
+  readonly inspectionVerified: false;
 }
+
+export interface SolanaVerifiedPreparedTransaction extends Omit<SolanaPreparedTransaction, "inspectionVerified"> {
+  readonly inspectionVerified: true;
+  readonly inspection: SolanaTransactionInspection;
+}
+
 export interface SolanaSimulationEvidence {
   readonly state: "solana-simulated";
-  readonly transaction: SolanaPreparedTransaction;
+  readonly transaction: SolanaVerifiedPreparedTransaction;
   readonly commitment: SolanaCommitment;
   readonly success: boolean;
   readonly err?: unknown;
@@ -105,30 +122,33 @@ export async function captureSolanaRecentBlockhash(client: SolanaKitClientLike, 
   const [rawHash, rawHeight] = await Promise.all([getLatestBlockhash({ commitment }).send(), getBlockHeight({ commitment }).send()]);
   const value = object(responseValue(rawHash), "getLatestBlockhash value");
   if (typeof value.blockhash !== "string") fail("ES4460", "MalformedSolanaRpcResponse", "getLatestBlockhash response is missing blockhash.");
-  return solanaRecentBlockhash({
-    blockhash: value.blockhash,
-    lastValidBlockHeight: integer(value.lastValidBlockHeight, "lastValidBlockHeight"),
-    commitment,
-    observedBlockHeight: integer(responseValue(rawHeight), "blockHeight"),
-  });
+  return solanaRecentBlockhash({ blockhash: value.blockhash, lastValidBlockHeight: integer(value.lastValidBlockHeight, "lastValidBlockHeight"), commitment, observedBlockHeight: integer(responseValue(rawHeight), "blockHeight") });
 }
 
 export function prepareSolanaSerializedTransaction(input: { profile: SolanaChainProfile; serializedBase64: string; version?: SolanaTransactionVersion; recentBlockhash: SolanaRecentBlockhashEvidence }): SolanaPreparedTransaction {
   base64Bytes(input.serializedBase64);
   const version = input.version ?? 0;
   if (version !== "legacy" && version !== 0) fail("ES4464", "UnsupportedSolanaTransactionVersion", "EraScript currently supports Solana legacy and v0 transactions in the v0.6 adapter.", { version: String(version) });
-  return { state: "solana-prepared", profileId: input.profile.id, version, serializedBase64: input.serializedBase64, bindingHash: bindingHash(input.serializedBase64, input.recentBlockhash, version), recentBlockhash: input.recentBlockhash };
+  return { state: "solana-prepared", profileId: input.profile.id, version, serializedBase64: input.serializedBase64, bindingHash: bindingHash(input.serializedBase64, input.recentBlockhash, version), recentBlockhash: input.recentBlockhash, inspectionVerified: false };
 }
 
-export async function simulateSolanaTransaction(client: SolanaKitClientLike, prepared: SolanaPreparedTransaction, commitment: SolanaCommitment = "confirmed"): Promise<SolanaSimulationEvidence> {
+export async function verifySolanaSerializedTransaction(prepared: SolanaPreparedTransaction, inspector: SolanaTransactionInspector): Promise<SolanaVerifiedPreparedTransaction> {
+  let inspection: SolanaTransactionInspection;
+  try { inspection = await inspector(base64Bytes(prepared.serializedBase64)); }
+  catch (error) { return fail("ES4469", "SolanaTransactionInspectionFailed", "Failed to inspect serialized Solana transaction bytes.", { cause: error instanceof Error ? error.message : String(error) }); }
+  if (inspection.version !== prepared.version) fail("ES4468", "SolanaTransactionInspectionMismatch", "Serialized Solana transaction version differs from the declared EraScript version.", { expected: String(prepared.version), actual: String(inspection.version) });
+  const observedBlockhash = solanaBlockhash(inspection.recentBlockhash);
+  if (observedBlockhash !== prepared.recentBlockhash.blockhash) fail("ES4468", "SolanaTransactionInspectionMismatch", "Serialized Solana transaction recent blockhash differs from the bound blockhash evidence.", { expected: prepared.recentBlockhash.blockhash, actual: observedBlockhash });
+  if (inspection.signerCount !== undefined && (!Number.isSafeInteger(inspection.signerCount) || inspection.signerCount < 1)) fail("ES4468", "SolanaTransactionInspectionMismatch", "Serialized Solana transaction inspector returned an invalid signer count.", { signerCount: inspection.signerCount });
+  return { ...prepared, inspectionVerified: true, inspection: { ...inspection, recentBlockhash: observedBlockhash } };
+}
+
+export async function simulateSolanaTransaction(client: SolanaKitClientLike, prepared: SolanaVerifiedPreparedTransaction, commitment: SolanaCommitment = "confirmed"): Promise<SolanaSimulationEvidence> {
   const getBlockHeight = rpcMethod(client, "getBlockHeight") as (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   const currentHeight = integer(responseValue(await getBlockHeight({ commitment }).send()), "blockHeight");
   assertSolanaBlockhashFresh(prepared.recentBlockhash, currentHeight);
   const simulate = rpcMethod(client, "simulateTransaction") as (transaction: string, config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
-  const value = object(responseValue(await simulate(prepared.serializedBase64, {
-    encoding: "base64", commitment, sigVerify: true, replaceRecentBlockhash: false,
-    ...(prepared.version === 0 ? { maxSupportedTransactionVersion: 0 } : {}),
-  }).send()), "simulateTransaction value");
+  const value = object(responseValue(await simulate(prepared.serializedBase64, { encoding: "base64", commitment, sigVerify: true, replaceRecentBlockhash: false, ...(prepared.version === 0 ? { maxSupportedTransactionVersion: 0 } : {}) }).send()), "simulateTransaction value");
   const logs = Array.isArray(value.logs) ? value.logs.filter((entry): entry is string => typeof entry === "string") : [];
   const unitsConsumed = value.unitsConsumed === undefined || value.unitsConsumed === null ? undefined : integer(value.unitsConsumed, "unitsConsumed");
   const success = value.err === null || value.err === undefined;
@@ -140,10 +160,7 @@ export async function submitSolanaTransaction(client: SolanaKitClientLike, simul
   const height = integer(responseValue(await getBlockHeight({ commitment: simulation.commitment }).send()), "blockHeight");
   assertSolanaBlockhashFresh(simulation.transaction.recentBlockhash, height);
   const send = rpcMethod(client, "sendTransaction") as (transaction: string, config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
-  const raw = responseValue(await send(simulation.transaction.serializedBase64, {
-    encoding: "base64", skipPreflight: false, preflightCommitment: simulation.commitment,
-    ...(simulation.transaction.version === 0 ? { maxSupportedTransactionVersion: 0 } : {}),
-  }).send());
+  const raw = responseValue(await send(simulation.transaction.serializedBase64, { encoding: "base64", skipPreflight: false, preflightCommitment: simulation.commitment, ...(simulation.transaction.version === 0 ? { maxSupportedTransactionVersion: 0 } : {}) }).send());
   if (typeof raw !== "string") fail("ES4460", "MalformedSolanaRpcResponse", "sendTransaction did not return a transaction signature.");
   return { state: "solana-submitted", simulation, signature: solanaTransactionSignature(raw), submittedAtBlockHeight: height };
 }
