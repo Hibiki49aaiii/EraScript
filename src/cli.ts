@@ -7,32 +7,54 @@ import process from "node:process";
 import { compile } from "./compiler.js";
 import {
   diagnosticsJson,
+  EraDiagnosticError,
   formatEraDiagnostic,
   typescriptDiagnosticToEra,
   type EraDiagnostic,
 } from "./diagnostics.js";
 import { typecheck, type CheckResult } from "./typecheck.js";
+import {
+  assertVerificationRequirement,
+  parseVerificationReportJson,
+} from "./web3/verification-io.js";
+import type { RescueVerificationState } from "./web3/verification.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.5.0";
+const VERIFICATION_STATES = new Set<RescueVerificationState>([
+  "NOT_READY",
+  "READY_FOR_BROADCAST",
+  "RECOVERY_OBSERVED",
+  "VERIFIED_RECOVERY",
+]);
 
-function usage(): never {
+function usage(exitCode = 0): never {
   console.log(`EraScript ${VERSION}
 
 Usage:
   era build <file.era> [-o output.js]
   era run <file.era> [-- <args...>]
   era check <file.era> [--json]
+  era verify <report.json> [--require STATE] [--json] [--integrity-only]
   era transpile <file.era>
   era init [directory]
   era --version
 
+Verification states:
+  NOT_READY
+  READY_FOR_BROADCAST
+  RECOVERY_OBSERVED
+  VERIFIED_RECOVERY
+
+By default, 'era verify' requires READY_FOR_BROADCAST or stronger.
+Use --integrity-only only when you intentionally want hash/schema validation without an execution-readiness gate.
+
 EraScript is Node.js/TypeScript compatible and adds Web3-first safety checks.
-AI agents should prefer: era check <file.era> --json`);
-  process.exit(0);
+AI agents should prefer structured outputs: era check <file.era> --json`);
+  process.exit(exitCode);
 }
 
 function requireFile(arg: string | undefined): string {
-  if (!arg) usage();
+  if (!arg) usage(2);
   return resolve(arg);
 }
 
@@ -58,6 +80,10 @@ function failDiagnostics(diagnostics: readonly EraDiagnostic[], json = false, ex
     for (const diagnostic of diagnostics) console.error(formatEraDiagnostic(diagnostic));
   }
   process.exit(1);
+}
+
+function failEra(error: EraDiagnosticError, json = false, extra: Record<string, unknown> = {}): never {
+  failDiagnostics([error.diagnostic], json, extra);
 }
 
 function ensureChecked(checked: CheckResult, json = false): void {
@@ -129,6 +155,52 @@ function init(directory: string | undefined): void {
   console.log(`Initialized EraScript project in ${root}`);
 }
 
+function requiredVerificationState(args: string[]): RescueVerificationState {
+  const index = args.indexOf("--require");
+  if (index < 0) return "READY_FOR_BROADCAST";
+  const value = args[index + 1];
+  if (!value || !VERIFICATION_STATES.has(value as RescueVerificationState)) {
+    console.error(`EraScript: --require must be one of ${[...VERIFICATION_STATES].join(", ")}`);
+    process.exit(2);
+  }
+  return value as RescueVerificationState;
+}
+
+function verifyReport(file: string, args: string[]): never {
+  if (extname(file) !== ".json") {
+    console.error(`EraScript: era verify expects a .json verification report, got ${file}`);
+    process.exit(2);
+  }
+  const json = args.includes("--json");
+  const integrityOnly = args.includes("--integrity-only");
+  let report;
+  try {
+    report = parseVerificationReportJson(readFileSync(file, "utf8"));
+    if (!integrityOnly) assertVerificationRequirement(report, requiredVerificationState(args));
+  } catch (error) {
+    if (error instanceof EraDiagnosticError) failEra(error, json, { file });
+    throw error;
+  }
+
+  if (json) {
+    console.log(JSON.stringify({
+      ok: true,
+      file,
+      state: report.state,
+      reportHash: report.reportHash,
+      integrityOnly,
+      required: integrityOnly ? null : requiredVerificationState(args),
+      checks: report.checks,
+    }, null, 2));
+  } else {
+    console.log(`VERIFIED ${file}`);
+    console.log(`State: ${report.state}`);
+    console.log(`Report hash: ${report.reportHash}`);
+    console.log(integrityOnly ? "Gate: integrity only" : `Gate: ${requiredVerificationState(args)} or stronger`);
+  }
+  process.exit(0);
+}
+
 const args = process.argv.slice(2);
 const command = args[0];
 if (!command || command === "-h" || command === "--help") usage();
@@ -161,6 +233,9 @@ switch (command) {
     console.log(`OK ${file}`);
     break;
   }
+  case "verify":
+    verifyReport(requireFile(args[1]), args.slice(2));
+    break;
   case "transpile": {
     const file = requireFile(args[1]);
     const result = compile(readSource(file), { fileName: file, sourceMap: false });
@@ -175,5 +250,5 @@ switch (command) {
     break;
   default:
     console.error(`EraScript: unknown command '${command}'`);
-    usage();
+    usage(2);
 }
