@@ -2,6 +2,7 @@ export * from "./abi.js";
 export * from "./analyze.js";
 export * from "./capabilities.js";
 export * from "./eip7702.js";
+export * from "./erc4337-paymaster.js";
 export * from "./erc4337.js";
 export * from "./events.js";
 export * from "./external-signer.js";
