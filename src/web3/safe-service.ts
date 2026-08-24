@@ -11,6 +11,10 @@ import { unwrapWei } from "./values.js";
 
 export interface SafeTransactionServiceLike {
   readonly serviceUrl?: string;
+  proposeTransaction?: (...args: unknown[]) => Promise<unknown>;
+  confirmTransaction?: (...args: unknown[]) => Promise<unknown>;
+  getTransaction?: (...args: unknown[]) => Promise<unknown>;
+  getTransactionConfirmations?: (...args: unknown[]) => Promise<unknown>;
 }
 
 export interface SafeServiceEvidence<C extends EvmChain = EvmChain> {
@@ -96,12 +100,14 @@ export async function submitSafeConfirmationToService<C extends EvmChain>(servic
 }
 
 type ServiceTransactionRecord = Record<string, unknown>;
-type ServiceConfirmationList = { readonly count?: unknown; readonly results?: readonly unknown[] } | readonly unknown[];
+type ServiceConfirmationRecord = { readonly count?: unknown; readonly results?: readonly unknown[] };
+type ServiceConfirmationList = ServiceConfirmationRecord | readonly unknown[];
 
 function confirmationCount(value: ServiceConfirmationList): number {
   if (Array.isArray(value)) return value.length;
-  if (value.results && Array.isArray(value.results)) return value.results.length;
-  if (value.count !== undefined) return numberCount(value.count, "confirmations.count");
+  const record = value as ServiceConfirmationRecord;
+  if (Array.isArray(record.results)) return record.results.length;
+  if (record.count !== undefined) return numberCount(record.count, "confirmations.count");
   fail("ES4221", "MalformedSafeServiceRecord", "Safe service confirmation response has no count/results array.");
 }
 
