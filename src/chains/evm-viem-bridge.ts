@@ -1,5 +1,5 @@
 import { EraDiagnosticError } from "../diagnostics.js";
-import { genericEvmProfile } from "./types.js";
+import { defineEvmChainProfile, genericEvmProfile } from "./types.js";
 import type {
   CapabilityStatus,
   EvmCapabilities,
@@ -83,16 +83,16 @@ export function evmProfileFromViemChain(chain: ViemChainLike, overrides: EvmViem
   });
   const capabilities = mergeCapabilities(baseline.capabilities, overrides.capabilities);
   for (const [key, value] of Object.entries(capabilities) as [keyof EvmCapabilities, CapabilityStatus][]) validateCapability(value, key);
-  return {
+  return defineEvmChainProfile({
     ...baseline,
     ...(overrides.finality ? { finality: overrides.finality } : {}),
     ...(overrides.executionBackends ? { executionBackends: [...overrides.executionBackends] } : {}),
     capabilities,
-  };
+  });
 }
 
 export function withEvmCapabilityOverrides(profile: EvmChainProfile, overrides: Partial<EvmCapabilities>): EvmChainProfile {
   const capabilities = mergeCapabilities(profile.capabilities, overrides);
   for (const [key, value] of Object.entries(capabilities) as [keyof EvmCapabilities, CapabilityStatus][]) validateCapability(value, key);
-  return { ...profile, capabilities };
+  return defineEvmChainProfile({ ...profile, capabilities });
 }
