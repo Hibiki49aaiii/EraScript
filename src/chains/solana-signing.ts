@@ -9,6 +9,7 @@ import { solanaAddress, type SolanaAddress } from "./solana.js";
 import {
   prepareSolanaSerializedTransaction,
   verifySolanaSerializedTransaction,
+  type SolanaExecutionReadyTransaction,
   type SolanaTransactionInspector,
   type SolanaVerifiedPreparedTransaction,
 } from "./solana-adapter.js";
@@ -61,7 +62,7 @@ export interface SolanaAssembledSignedTransaction {
   readonly kind: "solana-assembled-signed-transaction";
   readonly source: SolanaVerifiedPreparedTransaction;
   readonly signatureSet: SolanaSignatureSetEvidence;
-  readonly transaction: SolanaVerifiedPreparedTransaction;
+  readonly transaction: SolanaExecutionReadyTransaction;
   readonly assemblyHash: string;
 }
 
@@ -172,13 +173,18 @@ export async function assembleAndVerifySolanaSignedTransaction(input: {
     version: input.source.version,
     recentBlockhash: input.source.recentBlockhash,
   });
-  const transaction = await verifySolanaSerializedTransaction(prepared, input.transactionInspector);
-  const assembledPlan = await createSolanaSigningPlan(input.profile, transaction, input.signingInspector);
+  const verified = await verifySolanaSerializedTransaction(prepared, input.transactionInspector);
+  const assembledPlan = await createSolanaSigningPlan(input.profile, verified, input.signingInspector);
 
   if (assembledPlan.signingPayloadBase64 !== input.signatureSet.plan.signingPayloadBase64 || assembledPlan.payloadHash !== input.signatureSet.plan.payloadHash) fail("ES4632", "SolanaAssembledPayloadMismatch", "Final signed Solana wire transaction contains message bytes different from those authorized by the signers.", { expectedPayloadHash: input.signatureSet.plan.payloadHash, actualPayloadHash: assembledPlan.payloadHash });
   if (!sameSigners(assembledPlan.requiredSigners, input.signatureSet.plan.requiredSigners)) fail("ES4633", "SolanaAssembledSignerSetMismatch", "Final signed Solana wire transaction has a different required signer sequence.", { expected: input.signatureSet.plan.requiredSigners, actual: assembledPlan.requiredSigners });
   if (assembledPlan.feePayer !== input.signatureSet.plan.feePayer) fail("ES4634", "SolanaAssembledFeePayerMismatch", "Final signed Solana wire transaction has a different fee payer.", { expected: input.signatureSet.plan.feePayer, actual: assembledPlan.feePayer });
 
+  const transaction: SolanaExecutionReadyTransaction = {
+    ...verified,
+    signatureAssemblyVerified: true,
+    signatureEvidenceHash: input.signatureSet.evidenceHash,
+  };
   return {
     kind: "solana-assembled-signed-transaction",
     source: input.source,
