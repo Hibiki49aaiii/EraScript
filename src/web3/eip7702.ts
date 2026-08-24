@@ -21,7 +21,7 @@ export interface Eip7702AuthorizationRequest<C extends EvmChain = EvmChain> {
   readonly replayable: boolean;
 }
 
-export interface SignedEip7702Authorization<C extends EvmChain = EvmChain> extends Eip7702AuthorizationRequest<C> {
+export interface SignedEip7702Authorization<C extends EvmChain = EvmChain> extends Omit<Eip7702AuthorizationRequest<C>, "kind"> {
   readonly kind: "eip7702-signed-authorization";
   readonly yParity: number;
   readonly r: Hex;
