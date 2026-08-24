@@ -51,7 +51,7 @@ function fail(code: string, kind: string, message: string, details?: Record<stri
 
 function action<A, R>(client: ViemClientLike, name: string): (args: A) => Promise<R> {
   const value = (client as unknown as Record<string, unknown>)[name];
-  if (typeof value !== "function") fail("ES3930", "MissingWitnessRpcAction", `The supplied RPC client does not expose '${name}'.`, { action: name });
+  if (typeof value !== "function") fail("ES4090", "MissingWitnessRpcAction", `The supplied RPC client does not expose '${name}'.`, { action: name });
   return value.bind(client) as (args: A) => Promise<R>;
 }
 
@@ -60,7 +60,7 @@ function sameAddress(a: string, b: string): boolean {
 }
 
 function unsigned256(value: bigint, field: string): bigint {
-  if (value < 0n || value >= (1n << 256n)) fail("ES3931", "WitnessIntegerOutOfRange", `${field} must fit uint256.`, { field, value: value.toString() });
+  if (value < 0n || value >= (1n << 256n)) fail("ES4091", "WitnessIntegerOutOfRange", `${field} must fit uint256.`, { field, value: value.toString() });
   return value;
 }
 
@@ -77,12 +77,12 @@ export async function verifyPermit2WitnessSpenderFromRpc<C extends EvmChain>(cli
   assertRpcChain(client, trust.chain);
   const getBlock = action<{ blockNumber?: bigint; blockTag?: "latest" }, { number: bigint | null; hash: Hex | null }>(client, "getBlock");
   const anchor = blockNumber === undefined ? await getBlock({ blockTag: "latest" }) : await getBlock({ blockNumber });
-  if (anchor.number === null || anchor.hash === null) fail("ES3932", "UnanchoredWitnessSpenderVerification", "Permit2 witness spender verification could not be anchored to a concrete block.");
+  if (anchor.number === null || anchor.hash === null) fail("ES4092", "UnanchoredWitnessSpenderVerification", "Permit2 witness spender verification could not be anchored to a concrete block.");
   const getCode = action<{ address: Hex; blockNumber: bigint }, Hex | undefined>(client, "getCode");
   const code = await getCode({ address: trust.spender, blockNumber: anchor.number });
-  if (!code || code === "0x") fail("ES3933", "WitnessSpenderNotContract", "Permit2 witness spender has no deployed bytecode at the verification block.", { spender: trust.spender, blockNumber: anchor.number.toString() });
+  if (!code || code === "0x") fail("ES4093", "WitnessSpenderNotContract", "Permit2 witness spender has no deployed bytecode at the verification block.", { spender: trust.spender, blockNumber: anchor.number.toString() });
   const observedCodeHash = hash(keccak256(code), "keccak256");
-  if (observedCodeHash.toLowerCase() !== trust.expectedCodeHash.toLowerCase()) fail("ES3934", "WitnessSpenderCodeHashMismatch", "Permit2 witness spender bytecode does not match the approved contract version.", { spender: trust.spender, expected: trust.expectedCodeHash, observed: observedCodeHash, blockNumber: anchor.number.toString() });
+  if (observedCodeHash.toLowerCase() !== trust.expectedCodeHash.toLowerCase()) fail("ES4094", "WitnessSpenderCodeHashMismatch", "Permit2 witness spender bytecode does not match the approved contract version.", { spender: trust.spender, expected: trust.expectedCodeHash, observed: observedCodeHash, blockNumber: anchor.number.toString() });
   return {
     ...trust,
     kind: "permit2-witness-spender-verified",
@@ -181,9 +181,9 @@ export interface Permit2WitnessTransferExecution<C extends EvmChain, T extends T
 }
 
 export function permit2WitnessTransferExecution<C extends EvmChain, T extends TokenDefinition<string, C, number>>(authorization: Permit2WitnessTransferAuthorization<C, T>, recipient: Address<C>, requestedAmount: TokenAmount<T>): Permit2WitnessTransferExecution<C, T> {
-  if (!sameAddress(recipient, authorization.witness.recipient)) fail("ES3935", "WitnessRecipientMismatch", "Permit2 transfer recipient does not match the recipient committed in EraTransferWitness.", { signedRecipient: authorization.witness.recipient, requestedRecipient: recipient });
+  if (!sameAddress(recipient, authorization.witness.recipient)) fail("ES4095", "WitnessRecipientMismatch", "Permit2 transfer recipient does not match the recipient committed in EraTransferWitness.", { signedRecipient: authorization.witness.recipient, requestedRecipient: recipient });
   if (!sameAddress(requestedAmount.token.address, authorization.permitted.token.address) || requestedAmount.token.chain.id !== authorization.permitted.token.chain.id) fail("ES3905", "TokenIdentityMismatch", "Permit2 witness execution amount does not belong to the permitted token.");
-  if (requestedAmount.raw !== authorization.witness.requestedAmount.raw) fail("ES3936", "WitnessRequestedAmountMismatch", "Permit2 transfer requested amount does not match the amount committed in EraTransferWitness.", { signedAmount: authorization.witness.requestedAmount.raw.toString(), requestedAmount: requestedAmount.raw.toString() });
+  if (requestedAmount.raw !== authorization.witness.requestedAmount.raw) fail("ES4096", "WitnessRequestedAmountMismatch", "Permit2 transfer requested amount does not match the amount committed in EraTransferWitness.", { signedAmount: authorization.witness.requestedAmount.raw.toString(), requestedAmount: requestedAmount.raw.toString() });
   return {
     authorization,
     recipient,
