@@ -13,6 +13,7 @@ export * from "./nonce.js";
 export * from "./permit-witness.js";
 export * from "./permit.js";
 export * from "./rpc.js";
+export * from "./safe-service.js";
 export * from "./safe.js";
 export * from "./secrets.js";
 export * from "./state-diff.js";
