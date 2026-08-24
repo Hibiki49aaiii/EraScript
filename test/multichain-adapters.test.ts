@@ -19,12 +19,11 @@ import {
   readJitoBundleStatus,
   readJitoTipAccounts,
   readSolanaSignatureStatus,
-  simulateSolanaTransaction,
+  simulateSolanaPreSignTransaction,
   simulateSuiPreparedTransaction,
   solanaBlockhash,
   solanaTransactionSignature,
   submitJitoBundle,
-  submitSolanaTransaction,
   executeSuiTransaction,
   verifyJitoBundleTip,
   verifySolanaSerializedTransaction,
@@ -59,24 +58,29 @@ test("generic EVM discovery only promotes capabilities proven by RPC evidence", 
   assert.throws(() => assertEvmCapability(evidence, "eip7702"), (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4451");
 });
 
-test("Solana adapter requires serialized blockhash/version inspection before simulation", async () => {
+test("Solana adapter treats pre-sign simulation as non-submission evidence", async () => {
   let blockHeight = 100n;
   const client = {
     rpc: {
       getLatestBlockhash: () => ({ send: async () => ({ value: { blockhash: SOL_BLOCKHASH, lastValidBlockHeight: 150n } }) }),
       getBlockHeight: () => ({ send: async () => blockHeight }),
-      simulateTransaction: () => ({ send: async () => ({ value: { err: null, logs: ["ok"], unitsConsumed: 123n } }) }),
-      sendTransaction: () => ({ send: async () => SOL_SIGNATURE }),
+      simulateTransaction: (_transaction: string, config?: Record<string, unknown>) => ({
+        send: async () => {
+          assert.equal(config?.sigVerify, false);
+          return { value: { err: null, logs: ["ok"], unitsConsumed: 123n } };
+        },
+      }),
       getSignatureStatuses: () => ({ send: async () => ({ value: [{ slot: 200n, confirmations: null, confirmationStatus: "finalized", err: null }] }) }),
     },
   };
   const recent = await captureSolanaRecentBlockhash(client);
   const prepared = prepareSolanaSerializedTransaction({ profile: SolanaMainnetProfile, serializedBase64: BASE64_TX, recentBlockhash: recent });
   const verified = await verifySolanaSerializedTransaction(prepared, async () => ({ version: 0, recentBlockhash: solanaBlockhash(SOL_BLOCKHASH), signerCount: 1 }));
-  const simulation = await simulateSolanaTransaction(client, verified);
+  const simulation = await simulateSolanaPreSignTransaction(client, verified);
   assert.equal(simulation.success, true);
-  const submitted = await submitSolanaTransaction(client, simulation as typeof simulation & { success: true });
-  assert.equal(submitted.signature, SOL_SIGNATURE);
+  assert.equal(simulation.signatureVerification, false);
+  assert.equal(simulation.state, "solana-pre-sign-simulated");
+
   const status = await readSolanaSignatureStatus(client, solanaTransactionSignature(SOL_SIGNATURE));
   assert.equal(assertSolanaFinalized(status).confirmationStatus, "finalized");
 
@@ -86,7 +90,7 @@ test("Solana adapter requires serialized blockhash/version inspection before sim
   );
 
   blockHeight = 151n;
-  await assert.rejects(() => simulateSolanaTransaction(client, verified), (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4416");
+  await assert.rejects(() => simulateSolanaPreSignTransaction(client, verified), (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4416");
 });
 
 test("Jito requires official tip-account evidence and an exact serialized tip transfer before sendBundle", async () => {
