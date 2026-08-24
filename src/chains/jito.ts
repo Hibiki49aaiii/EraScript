@@ -15,6 +15,26 @@ export interface JitoTipEvidence {
   readonly transactionIndex: number;
 }
 
+export interface JitoTipAccountsEvidence {
+  readonly kind: "jito-tip-accounts";
+  readonly accounts: readonly SolanaAddress[];
+  readonly observedAtMs: number;
+  readonly relay?: string;
+}
+
+export interface JitoTipTransferInspection {
+  readonly recipient: string;
+  readonly lamports: bigint | string | number;
+  readonly via?: "top-level" | "cpi" | "unknown";
+}
+
+export interface JitoTransactionTipInspection {
+  readonly tipTransfers: readonly JitoTipTransferInspection[];
+  readonly tipAccountResolvedViaAddressLookupTable?: boolean;
+}
+
+export type JitoTransactionInspector = (serializedTransaction: Uint8Array, transactionIndex: number) => JitoTransactionTipInspection | Promise<JitoTransactionTipInspection>;
+
 export interface JitoBundleDraft {
   readonly state: "jito-bundle-draft";
   readonly profileId: string;
@@ -24,7 +44,19 @@ export interface JitoBundleDraft {
   readonly bindingHash: string;
 }
 
-export interface JitoBundleSubmitted extends Omit<JitoBundleDraft, "state"> {
+export interface JitoVerifiedBundleDraft extends Omit<JitoBundleDraft, "state"> {
+  readonly state: "jito-bundle-verified";
+  readonly tipAccountsEvidence: JitoTipAccountsEvidence;
+  readonly tipInspection: {
+    readonly transactionIndex: number;
+    readonly recipient: SolanaAddress;
+    readonly lamports: bigint;
+    readonly via: "top-level" | "cpi" | "unknown";
+    readonly tipAccountResolvedViaAddressLookupTable: false;
+  };
+}
+
+export interface JitoBundleSubmitted extends Omit<JitoVerifiedBundleDraft, "state"> {
   readonly state: "jito-bundle-submitted";
   readonly bundleId: string;
   readonly submittedAtMs: number;
@@ -58,10 +90,14 @@ function integer(value: unknown, field: string): bigint {
   if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
   fail("ES4470", "MalformedJitoResponse", `Jito field '${field}' must be a non-negative integer.`, { field, value: String(value) });
 }
-function base64(value: string, index: number): string {
+function base64Bytes(value: string, index: number): Uint8Array {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length % 4 !== 0) fail("ES4471", "InvalidJitoTransactionEncoding", "Jito bundle transaction must use canonical base64 encoding.", { index });
   const bytes = Buffer.from(value, "base64");
   if (bytes.length === 0 || bytes.toString("base64") !== value) fail("ES4471", "InvalidJitoTransactionEncoding", "Jito bundle transaction base64 is malformed or empty.", { index });
+  return bytes;
+}
+function base64(value: string, index: number): string {
+  base64Bytes(value, index);
   return value;
 }
 function hashBundle(transactions: readonly string[], tip: JitoTipEvidence): string {
@@ -77,9 +113,20 @@ function resultValue(value: unknown): unknown {
 }
 
 export function jitoTip(input: { account: string; lamports: Lamports; transactionIndex: number }): JitoTipEvidence {
-  if (input.lamports <= 0n) fail("ES4472", "InvalidJitoTip", "Jito bundle requires a positive tip amount.", { lamports: input.lamports.toString() });
+  if (input.lamports < 1_000n) fail("ES4472", "InvalidJitoTip", "Jito bundle tip must be at least 1000 lamports.", { lamports: input.lamports.toString() });
   if (!Number.isSafeInteger(input.transactionIndex) || input.transactionIndex < 0) fail("ES4472", "InvalidJitoTip", "Jito tip transactionIndex must be a non-negative safe integer.", { transactionIndex: input.transactionIndex });
   return { kind: "jito-tip", account: solanaAddress(input.account), lamports: input.lamports, transactionIndex: input.transactionIndex };
+}
+
+export async function readJitoTipAccounts(relay: JitoRelayLike, nowMs = Date.now()): Promise<JitoTipAccountsEvidence> {
+  const raw = resultValue(await relay.request<unknown>("getTipAccounts", []));
+  if (!Array.isArray(raw) || raw.length === 0) fail("ES4480", "JitoTipAccountsUnavailable", "Jito getTipAccounts did not return any tip accounts.");
+  const accounts = raw.map((value, index) => {
+    if (typeof value !== "string") fail("ES4470", "MalformedJitoResponse", "Jito tip account must be a base58 string.", { index });
+    return solanaAddress(value);
+  });
+  if (new Set(accounts).size !== accounts.length) fail("ES4481", "DuplicateJitoTipAccount", "Jito getTipAccounts returned duplicate accounts.");
+  return { kind: "jito-tip-accounts", accounts, observedAtMs: nowMs, ...(relay.url ? { relay: relay.url } : {}) };
 }
 
 export function createJitoBundle(input: { profile: SolanaChainProfile; transactionsBase64: readonly string[]; expectedSignatures?: readonly string[]; tip: JitoTipEvidence }): JitoBundleDraft {
@@ -92,7 +139,36 @@ export function createJitoBundle(input: { profile: SolanaChainProfile; transacti
   return { state: "jito-bundle-draft", profileId: input.profile.id, transactionsBase64, ...(expectedSignatures ? { expectedSignatures } : {}), tip: input.tip, bindingHash: hashBundle(transactionsBase64, input.tip) };
 }
 
-export async function submitJitoBundle(relay: JitoRelayLike, draft: JitoBundleDraft): Promise<JitoBundleSubmitted> {
+export async function verifyJitoBundleTip(draft: JitoBundleDraft, tipAccountsEvidence: JitoTipAccountsEvidence, inspector: JitoTransactionInspector): Promise<JitoVerifiedBundleDraft> {
+  if (!tipAccountsEvidence.accounts.includes(draft.tip.account)) fail("ES4482", "JitoTipAccountNotOfficial", "Configured Jito tip recipient is not present in the observed getTipAccounts set.", { tipAccount: draft.tip.account });
+  let inspection: JitoTransactionTipInspection;
+  try { inspection = await inspector(base64Bytes(draft.transactionsBase64[draft.tip.transactionIndex]!, draft.tip.transactionIndex), draft.tip.transactionIndex); }
+  catch (error) { return fail("ES4483", "JitoTipInspectionFailed", "Failed to inspect the serialized Jito tip transaction.", { cause: error instanceof Error ? error.message : String(error) }); }
+  if (inspection.tipAccountResolvedViaAddressLookupTable === true) fail("ES4484", "JitoTipAddressLookupTableRejected", "Jito tip accounts must not be resolved through an Address Lookup Table.", { transactionIndex: draft.tip.transactionIndex, tipAccount: draft.tip.account });
+  const matching = inspection.tipTransfers.map((transfer, index) => ({
+    index,
+    recipient: solanaAddress(transfer.recipient),
+    lamports: integer(transfer.lamports, `tipTransfers[${index}].lamports`),
+    via: transfer.via ?? "unknown" as const,
+  })).filter((transfer) => transfer.recipient === draft.tip.account);
+  if (matching.length === 0) fail("ES4485", "JitoTipTransferMissing", "Serialized Jito bundle does not contain a transfer to the configured official tip account.", { transactionIndex: draft.tip.transactionIndex, tipAccount: draft.tip.account });
+  const exact = matching.find((transfer) => transfer.lamports === draft.tip.lamports);
+  if (!exact) fail("ES4486", "JitoTipAmountMismatch", "Serialized Jito tip transfer amount differs from the EraScript-bound tip amount.", { expectedLamports: draft.tip.lamports.toString(), observedLamports: matching.map((transfer) => transfer.lamports.toString()) });
+  return {
+    ...draft,
+    state: "jito-bundle-verified",
+    tipAccountsEvidence,
+    tipInspection: {
+      transactionIndex: draft.tip.transactionIndex,
+      recipient: exact.recipient,
+      lamports: exact.lamports,
+      via: exact.via,
+      tipAccountResolvedViaAddressLookupTable: false,
+    },
+  };
+}
+
+export async function submitJitoBundle(relay: JitoRelayLike, draft: JitoVerifiedBundleDraft): Promise<JitoBundleSubmitted> {
   const bundleId = resultValue(await relay.request<unknown>("sendBundle", [[...draft.transactionsBase64], { encoding: "base64" }]));
   if (typeof bundleId !== "string" || bundleId.length === 0) fail("ES4470", "MalformedJitoResponse", "Jito sendBundle did not return a bundle ID.");
   return { ...draft, state: "jito-bundle-submitted", bundleId, submittedAtMs: Date.now(), ...(relay.url ? { relay: relay.url } : {}) };
