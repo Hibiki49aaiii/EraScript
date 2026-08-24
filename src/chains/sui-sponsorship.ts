@@ -38,11 +38,9 @@ export interface SuiSponsoredSignatureEvidence {
 function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
   throw new EraDiagnosticError({ code, severity: "error", kind, message, ...(details ? { details } : {}) });
 }
-
 function sha256(value: string): string {
   return `0x${createHash("sha256").update(value).digest("hex")}`;
 }
-
 function stable(value: unknown): string {
   const normalize = (item: unknown): unknown => {
     if (typeof item === "bigint") return item.toString();
@@ -58,37 +56,32 @@ export function createSuiSponsoredSigningPlan(profile: SuiChainProfile, transact
   if (transaction.sender === transaction.gasOwner) fail("ES4571", "SuiSponsorshipNotRequired", "Sponsored Sui signing requires sender and gas owner to be different addresses.", { sender: transaction.sender });
   const payloadBase64 = transaction.serializedBase64;
   const payloadHash = sha256(`sui-transaction-bytes:${payloadBase64}`);
-  return {
-    kind: "sui-sponsored-signing-plan",
-    profileId: profile.id,
-    sender: transaction.sender,
-    sponsor: transaction.gasOwner,
-    transaction,
-    payloadBase64,
-    payloadHash,
-  };
+  return { kind: "sui-sponsored-signing-plan", profileId: profile.id, sender: transaction.sender, sponsor: transaction.gasOwner, transaction, payloadBase64, payloadHash };
 }
 
 export function createSuiSponsoredSigningRequests(profile: SuiChainProfile, plan: SuiSponsoredSigningPlan, options: { ttlMs?: number; nowMs?: number } = {}): SuiSponsoredSigningRequests {
   if (plan.profileId !== profile.id) fail("ES4570", "SuiSponsorshipProfileMismatch", "Sui sponsored signing plan belongs to a different profile.", { planProfile: plan.profileId, profile: profile.id });
-  const common = {
-    profile,
-    payload: plan.payloadBase64,
-    payloadEncoding: "base64" as const,
-    ttlMs: options.ttlMs,
-    nowMs: options.nowMs,
+  const requestOptions = {
+    ...(options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {}),
+    ...(options.nowMs !== undefined ? { nowMs: options.nowMs } : {}),
   };
   const senderRequest = createMultichainSigningRequest({
-    ...common,
+    profile,
     role: "sender",
     signer: plan.sender,
+    payload: plan.payloadBase64,
+    payloadEncoding: "base64",
     context: { kind: "sui-sponsored-transaction", role: "sender", bindingHash: plan.transaction.bindingHash, payloadHash: plan.payloadHash, counterparty: plan.sponsor },
+    ...requestOptions,
   });
   const sponsorRequest = createMultichainSigningRequest({
-    ...common,
+    profile,
     role: "sponsor",
     signer: plan.sponsor,
+    payload: plan.payloadBase64,
+    payloadEncoding: "base64",
     context: { kind: "sui-sponsored-transaction", role: "sponsor", bindingHash: plan.transaction.bindingHash, payloadHash: plan.payloadHash, counterparty: plan.sender },
+    ...requestOptions,
   });
   return { kind: "sui-sponsored-signing-requests", plan, senderRequest, sponsorRequest };
 }
@@ -99,29 +92,13 @@ function assertSignatureMatchesRequest(signature: VerifiedMultichainSignature, r
   if (signature.response.payloadHash !== request.payloadHash || signature.response.contextHash !== request.contextHash || signature.response.signer !== request.signer) fail("ES4572", "SuiSponsoredSignatureRequestMismatch", `${label} signature response binding differs from the expected request.`);
 }
 
-export function bindSuiSponsoredSignatures(requests: SuiSponsoredSigningRequests, input: {
-  senderSignature: VerifiedMultichainSignature;
-  sponsorSignature: VerifiedMultichainSignature;
-}): SuiSponsoredSignatureEvidence {
+export function bindSuiSponsoredSignatures(requests: SuiSponsoredSigningRequests, input: { senderSignature: VerifiedMultichainSignature; sponsorSignature: VerifiedMultichainSignature }): SuiSponsoredSignatureEvidence {
   assertSignatureMatchesRequest(input.senderSignature, requests.senderRequest, "Sender");
   assertSignatureMatchesRequest(input.sponsorSignature, requests.sponsorRequest, "Sponsor");
   if (input.senderSignature.request.signer !== requests.plan.sender || input.sponsorSignature.request.signer !== requests.plan.sponsor) fail("ES4573", "SuiSponsoredSignerIdentityMismatch", "Sui sponsored signatures do not match sender/gas-owner identities.");
   if (input.senderSignature.request.payload !== input.sponsorSignature.request.payload || input.senderSignature.request.payload !== requests.plan.payloadBase64) fail("ES4574", "SuiSponsoredPayloadMismatch", "Sender and sponsor did not authorize exactly the same final Sui transaction bytes.");
-  const evidenceHash = sha256(stable({
-    planPayloadHash: requests.plan.payloadHash,
-    sender: requests.plan.sender,
-    sponsor: requests.plan.sponsor,
-    senderSignature: input.senderSignature.response.signature,
-    sponsorSignature: input.sponsorSignature.response.signature,
-  }));
-  return {
-    kind: "sui-sponsored-signature-evidence",
-    plan: requests.plan,
-    senderSignature: input.senderSignature,
-    sponsorSignature: input.sponsorSignature,
-    exactPayloadMatch: true,
-    evidenceHash,
-  };
+  const evidenceHash = sha256(stable({ planPayloadHash: requests.plan.payloadHash, sender: requests.plan.sender, sponsor: requests.plan.sponsor, senderSignature: input.senderSignature.response.signature, sponsorSignature: input.sponsorSignature.response.signature }));
+  return { kind: "sui-sponsored-signature-evidence", plan: requests.plan, senderSignature: input.senderSignature, sponsorSignature: input.sponsorSignature, exactPayloadMatch: true, evidenceHash };
 }
 
 export function assertSuiSponsoredSimulationMatches(evidence: SuiSponsoredSignatureEvidence, simulation: SuiSimulationEvidence): SuiSimulationEvidence {
