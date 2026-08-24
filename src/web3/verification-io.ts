@@ -1,5 +1,6 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { EvmChain } from "./types.js";
+import type { UnsafeBoundaryAudit } from "./unsafe.js";
 import {
   verificationReportHash,
   type RescueVerificationReport,
@@ -55,6 +56,24 @@ function parseCheck(value: unknown, index: number): VerificationCheck {
   };
 }
 
+function parseUnsafeBoundary(value: unknown, index: number): UnsafeBoundaryAudit {
+  const record = object(value, `unsafeBoundaries[${index}]`);
+  if (record.kind !== "unsafe-boundary") fail("ES4050", "InvalidVerificationReport", "Unsafe boundary kind is invalid.", { index });
+  if (typeof record.id !== "string" || record.id.length === 0) fail("ES4050", "InvalidVerificationReport", "Unsafe boundary id must be a non-empty string.", { index });
+  if (typeof record.reason !== "string" || record.reason.trim().length < 12 || record.reason.trim().length > 240) fail("ES4050", "InvalidVerificationReport", "Unsafe boundary reason is invalid.", { index });
+  if (typeof record.file !== "string" || record.file.length === 0) fail("ES4050", "InvalidVerificationReport", "Unsafe boundary file must be a non-empty string.", { index });
+  if (typeof record.line !== "number" || !Number.isSafeInteger(record.line) || record.line < 1) fail("ES4050", "InvalidVerificationReport", "Unsafe boundary line must be a positive safe integer.", { index });
+  if (typeof record.column !== "number" || !Number.isSafeInteger(record.column) || record.column < 1) fail("ES4050", "InvalidVerificationReport", "Unsafe boundary column must be a positive safe integer.", { index });
+  return {
+    kind: "unsafe-boundary",
+    id: record.id,
+    reason: record.reason.trim(),
+    file: record.file,
+    line: record.line,
+    column: record.column,
+  };
+}
+
 export function parseVerificationReport(value: unknown): RescueVerificationReport {
   const record = object(value, "Verification report");
   if (record.kind !== "rescue-verification-report") fail("ES4050", "InvalidVerificationReport", "Unsupported verification report kind.", { kind: String(record.kind) });
@@ -67,10 +86,15 @@ export function parseVerificationReport(value: unknown): RescueVerificationRepor
   if (typeof record.state !== "string" || !STATES.has(record.state as RescueVerificationState)) fail("ES4050", "InvalidVerificationReport", "Verification report state is invalid.", { state: String(record.state) });
   if (!Array.isArray(record.checks)) fail("ES4050", "InvalidVerificationReport", "Verification report checks must be an array.");
   const checks = record.checks.map(parseCheck);
+  const unsafeBoundaries = record.unsafeBoundaries === undefined
+    ? []
+    : Array.isArray(record.unsafeBoundaries)
+      ? record.unsafeBoundaries.map(parseUnsafeBoundary)
+      : fail("ES4050", "InvalidVerificationReport", "Verification report unsafeBoundaries must be an array.");
   if (typeof record.reportHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(record.reportHash)) fail("ES4050", "InvalidVerificationReport", "Verification reportHash must be a 32-byte hexadecimal hash.");
 
   const state = record.state as RescueVerificationState;
-  const computed = verificationReportHash(chain, state, checks);
+  const computed = verificationReportHash(chain, state, checks, unsafeBoundaries);
   if (computed.toLowerCase() !== record.reportHash.toLowerCase()) {
     fail("ES4051", "VerificationReportHashMismatch", "Verification report content does not match reportHash.", {
       supplied: record.reportHash,
@@ -84,6 +108,7 @@ export function parseVerificationReport(value: unknown): RescueVerificationRepor
     state,
     reportHash: computed,
     checks,
+    ...(unsafeBoundaries.length > 0 ? { unsafeBoundaries } : {}),
     readyForBroadcast: state === "READY_FOR_BROADCAST" || state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
     recoveryObserved: state === "RECOVERY_OBSERVED" || state === "VERIFIED_RECOVERY",
     verifiedRecovery: state === "VERIFIED_RECOVERY",
