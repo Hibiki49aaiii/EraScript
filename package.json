@@ -1,7 +1,7 @@
 {
   "name": "erascript-lang",
-  "version": "0.5.0",
-  "description": "EraScript — an AI-first, Node.js/TypeScript-compatible language for safer Web3 automation.",
+  "version": "0.6.0",
+  "description": "EraScript — an AI-first, Node.js/TypeScript-compatible language for safer multi-chain Web3 automation.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -17,6 +17,14 @@
     "./web3": {
       "types": "./dist/src/web3/index.d.ts",
       "import": "./dist/src/web3/index.js"
+    },
+    "./chains": {
+      "types": "./dist/src/chains/index.d.ts",
+      "import": "./dist/src/chains/index.js"
+    },
+    "./privacy": {
+      "types": "./dist/src/privacy/index.d.ts",
+      "import": "./dist/src/privacy/index.js"
     }
   },
   "bin": {
