@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   Ethereum,
+  abiMerkleLeaf,
   address,
   assertAbiMerkleProof,
   bytes32,
@@ -46,29 +47,10 @@ test("Merkle scheme verifies declared ABI leaf semantics", () => {
   });
   const leftValues = [owner, 100n] as const;
   const rightValues = [recipient, 200n] as const;
-
-  // First obtain leaves using a one-leaf temporary verification path.
-  const emptyRootLeft = (() => {
-    try {
-      return assertAbiMerkleProof({ scheme, values: leftValues, proof: [], root: merkleRoot(bytes32(`0x${"00".repeat(32)}`)) });
-    } catch (error) {
-      if (!(error instanceof EraDiagnosticError) || error.diagnostic.code !== "ES3913") throw error;
-      return error.diagnostic.details as { computedRoot: string };
-    }
-  })();
-  const left = bytes32("computedRoot" in emptyRootLeft ? emptyRootLeft.computedRoot : emptyRootLeft.computedRoot);
-
-  const emptyRootRight = (() => {
-    try {
-      return assertAbiMerkleProof({ scheme, values: rightValues, proof: [], root: merkleRoot(bytes32(`0x${"00".repeat(32)}`)) });
-    } catch (error) {
-      if (!(error instanceof EraDiagnosticError) || error.diagnostic.code !== "ES3913") throw error;
-      return error.diagnostic.details as { computedRoot: string };
-    }
-  })();
-  const right = bytes32("computedRoot" in emptyRootRight ? emptyRootRight.computedRoot : emptyRootRight.computedRoot);
-
+  const left = abiMerkleLeaf(scheme, leftValues);
+  const right = abiMerkleLeaf(scheme, rightValues);
   const root = merkleRoot(hashMerklePair(left, right));
+
   const verified = assertAbiMerkleProof({ scheme, values: leftValues, proof: [right], root });
   assert.equal(verified.valid, true);
   assert.equal(verified.computedRoot, root);
@@ -81,12 +63,7 @@ test("64-byte non-double-hashed Merkle leaf preimage is rejected by default", ()
     doubleHashLeaf: false,
   });
   assert.throws(
-    () => assertAbiMerkleProof({
-      scheme,
-      values: [bytes32(`0x${"11".repeat(32)}`), bytes32(`0x${"22".repeat(32)}`)],
-      proof: [],
-      root: merkleRoot(bytes32(`0x${"00".repeat(32)}`)),
-    }),
+    () => abiMerkleLeaf(scheme, [bytes32(`0x${"11".repeat(32)}`), bytes32(`0x${"22".repeat(32)}`)]),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3912",
   );
 });
