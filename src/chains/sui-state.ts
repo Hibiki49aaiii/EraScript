@@ -191,12 +191,13 @@ export function createSuiCoreStateReader(client: SuiCoreStateClientLike, id = "@
       const record = object(value, "getObject.object");
       const observedId = typeof record.objectId === "string" ? suiObjectId(record.objectId) : objectId;
       if (observedId !== objectId) fail("ES4684", "SuiObjectIdentityMismatch", "Sui getObject response belongs to a different object ID.", { expected: objectId, actual: observedId });
+      const owner = record.owner !== undefined ? normalizeOwner(record.owner) : undefined;
       return {
         objectId,
         exists: true,
         ...(record.version !== undefined ? { version: exactUnsigned(record.version, "object.version") } : {}),
         ...(typeof record.digest === "string" ? { digest: suiObjectDigest(record.digest) } : {}),
-        ...(record.owner !== undefined ? { owner: normalizeOwner(record.owner) } : {}),
+        ...(owner !== undefined ? { owner } : {}),
         ...(typeof record.type === "string" ? { type: record.type } : {}),
       };
     },
