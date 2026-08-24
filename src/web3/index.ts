@@ -10,6 +10,7 @@ export * from "./fork-verification.js";
 export * from "./fork.js";
 export * from "./merkle.js";
 export * from "./nonce.js";
+export * from "./permit-witness.js";
 export * from "./permit.js";
 export * from "./rpc.js";
 export * from "./safe.js";
