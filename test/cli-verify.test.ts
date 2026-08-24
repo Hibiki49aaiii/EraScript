@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,7 +63,7 @@ test("era verify rejects a tampered report even with integrity-only", () => {
   const directory = mkdtempSync(join(tmpdir(), "erascript-verify-"));
   try {
     const file = writeReport(directory, "VERIFIED_RECOVERY");
-    const value = JSON.parse(require("node:fs").readFileSync(file, "utf8")) as Record<string, unknown>;
+    const value = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
     (value.checks as Array<Record<string, unknown>>)[0]!.message = "tampered";
     writeFileSync(file, JSON.stringify(value, null, 2));
     const result = runVerify(file, "--integrity-only");
