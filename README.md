@@ -1,20 +1,115 @@
 # EraScript
 
-**EraScript is an AI-first, Node.js/TypeScript-compatible language for safer Web3 automation.**
+**EraScript is an AI-first, Node.js/TypeScript-compatible language for safer multi-chain Web3 automation.**
 
-EraScript does not replace Node.js. It compiles to ordinary JavaScript, keeps npm/viem compatibility, and adds Web3-specific types, diagnostics, execution evidence, signing policies, and rescue-workflow verification.
+EraScript does not replace Node.js. It compiles to ordinary JavaScript, keeps npm compatibility, and adds chain-specific types, diagnostics, execution evidence, signing policies, privacy overlays, and workflow verification.
 
 > **AI writes intent. EraScript verifies execution.**
 
 ## Why EraScript
 
-A syntactically correct Node.js Web3 script can still use the wrong chain, corrupt a proof, mix token units, sign an unintended authorization, submit a stale bundle, omit a recovery transaction, or treat a transaction hash as success.
+A syntactically correct Node.js Web3 script can still use the wrong chain, corrupt a proof, mix token units, sign an unintended authorization, submit stale execution data, omit a recovery transaction, or treat a transaction/hash as success.
 
-EraScript moves those assumptions into machine-checkable types, policies, evidence objects, and state transitions.
+EraScript moves those assumptions into machine-checkable types, policies, evidence objects, capability profiles, and state transitions.
 
-The normative design is maintained in [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md).
+Normative/current design documents:
 
-## Current v0.5 foundation
+- [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
+- [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
+
+## Multi-chain model
+
+EraScript no longer treats Flashbots or Ethereum as the universal execution model.
+
+```text
+EraScript Core
+  |
+  +-- Chain Family
+  |     +-- EVM
+  |     +-- Solana
+  |     +-- Sui
+  |
+  +-- Execution Backend
+  |     +-- public/private RPC
+  |     +-- Flashbots
+  |     +-- Jito
+  |     +-- Sui RPC
+  |     +-- custom provider
+  |
+  +-- Protocol Overlay
+        +-- RAILGUN
+```
+
+Flashbots is an optional EVM execution backend. Jito is an optional Solana execution backend. RAILGUN is an EVM privacy overlay whose consensus/finality remains that of the underlying EVM chain.
+
+### Reliable EVM compatibility
+
+EraScript targets generic EVM compatibility without assuming every EVM chain exposes identical RPC, fee, finality, debug, AA, sequencer, private-RPC, or bundle behavior.
+
+Unknown/custom EVM networks begin with optional capabilities set to `unknown`:
+
+```ts
+const chain = genericEvmProfile({
+  id: "evm.custom.777",
+  name: "Custom EVM",
+  chainId: 777,
+})
+
+chain.capabilities.eip1559   // unknown
+chain.capabilities.eip7702   // unknown
+chain.capabilities.bundleRpc // unknown
+```
+
+A feature must be explicitly configured or discovered before EraScript relies on it.
+
+### Solana foundation
+
+Current primitives include:
+
+- `SolanaAddress`
+- `SolanaBlockhash`
+- `SolanaTransactionSignature`
+- `Lamports`
+- `processed / confirmed / finalized` commitments
+- recent blockhash + `lastValidBlockHeight` freshness evidence
+- legacy/v0 transaction profile
+- Jito backend capability
+
+A stale blockhash is rejected before signing/submission.
+
+### Sui foundation
+
+Current primitives include:
+
+- `SuiAddress`
+- `SuiObjectId`
+- `SuiObjectRef { objectId, version, digest }`
+- `SuiTransactionDigest`
+- `Mist`
+- transaction-effects evidence
+- sponsored transaction capability
+- effects/checkpoint finality model
+
+Sui sender/gas-owner semantics are not represented as EVM funding transactions.
+
+### RAILGUN foundation
+
+RAILGUN private execution has its own evidence lifecycle:
+
+```text
+PrivateIntent
+  -> GasEstimated
+  -> BroadcasterFeeQuoted (broadcaster flow)
+  -> ProofGenerated
+  -> Populated
+  -> BroadcasterSubmitted | SelfSubmitted
+  -> underlying EVM inclusion/finality
+  -> private-state verification
+```
+
+Proof evidence is bound to transfer details, gas evidence, broadcaster fee details and expiry. A proof tied to an expired broadcaster quote is rejected instead of silently reused.
+
+## Current EVM/Web3 foundation
 
 ### Web3 values and calldata
 
@@ -29,7 +124,7 @@ Current primitives include:
 - safe 4-byte selector removal for captured calldata
 - `Wei`, `Ether`, `Gas`, fee types, and exact `TokenAmount<Token>`
 - ERC-2612 Permit and Permit2 authorization envelopes
-- explicit Permit2 recipient semantics
+- Permit2 WitnessTransfer safety profile
 - ABI-defined Merkle schemes and proof verification
 - AI-readable diagnostics
 
@@ -42,6 +137,8 @@ Suggestion: A leading zero may be missing. Verify the source value before paddin
 ```
 
 ## Transaction evidence instead of `send()`
+
+EVM example:
 
 ```text
 DraftTx
@@ -56,11 +153,11 @@ DraftTx
 
 EraScript records or checks nonce provenance, gas and fees, block-anchored simulation, replacements, reverted receipts, canonical block hashes, confirmations, and finalized state.
 
-A transaction hash is **not** success. An included transaction is **not** finality.
+A transaction hash is **not** success. The same principle applies to Solana signatures, Sui digests, SafeTx hashes, UserOperation hashes, bundle IDs, and RAILGUN submission IDs.
 
 ## AI-safe signing
 
-Generated code can reference a key without receiving its raw value:
+Generated EVM code can reference a key without receiving its raw value:
 
 ```era
 const victimKey = privateKeyEnv(
@@ -70,66 +167,36 @@ const victimKey = privateKeyEnv(
 )
 ```
 
-`SignerPolicy` can restrict:
+`SignerPolicy` can restrict chain, signer, destination, selector, value, simulation assumptions, typed data and EIP-7702 behavior.
 
-- chain and signer address
-- destination allowlist
-- function selector allowlist
-- native value
-- state-override simulation
-- EIP-712 primary type and verifying contract
-- EIP-7702 transactions and delegate addresses
-- replayable EIP-7702 authorizations
-- delegation clearing
+For stronger isolation, `ExternalSigner` separates the AI/code-generation process from the secret-bearing signer process.
 
-For stronger isolation, `ExternalSigner` lets the AI/code-generation process send a normalized signing request to a separate secret-bearing process. The external signer sees the transaction type, authorization list, fee model, and simulation evidence but EraScript does not need to expose a private key to the AI process.
+Static analysis rejects common direct secret patterns such as `process.env.PRIVATE_KEY` and hardcoded private keys.
 
-Static analysis also rejects common direct secret patterns such as `process.env.PRIVATE_KEY` and hardcoded private keys.
+## EIP-7702 / Safe / ERC-4337
 
-## EIP-7702
+EraScript currently includes:
 
-EraScript models the authorization lifecycle explicitly:
+- chain-bound EIP-7702 authorization lifecycle
+- replayable/clear-delegation default-deny policy
+- authorization-list transaction integration
+- SafeTxHash lifecycle and Safe Transaction Service coordination evidence
+- ERC-4337 UserOperation lifecycle
+- Bundler evidence
+- Paymaster stub/final lifecycle
+- EntryPoint execution/finality evidence
 
-```text
-Authority + Delegate + Chain + Nonce
-  -> Policy check
-  -> Signed authorization
-  -> Cryptographic authority verification
-  -> authorizationList
-  -> EIP-7702 transaction preparation
-  -> simulation
-  -> signing
-```
+These remain EVM-family modules and are not forced onto Solana or Sui.
 
-Safety rules include:
+## Flashbots and Jito
 
-- chain-bound authorization by default
-- `chainId = 0` replayability is default-deny
-- zero-address delegation clearing is default-deny
-- delegate allowlists
-- self-execution authorization nonce = outer transaction nonce + 1
-- relayer and self execution are explicit
-- duplicate authority tuples are rejected
-- authorization transactions require destination + EIP-1559 fees
-- the authorization list is propagated through gas estimation, simulation, local signing, and external signing
+Flashbots bundles are modeled as EVM provider-specific target-bound evidence. Changing target block forces re-simulation.
 
-## Flashbots
+Jito is modeled separately for Solana. Bundle support must never be inferred merely because a chain is Solana, just as Flashbots support must never be inferred merely because a chain is EVM.
 
-EraScript models bundles as target-bound evidence:
+## Rescue DAG, fork simulation, and final-state invariants
 
-```text
-bundle-draft
-  -> eth_callBundle
-  -> bundle-simulated
-  -> eth_sendBundle
-  -> bundle-submitted
-```
-
-Changing the target block returns the bundle to draft state and forces re-simulation. Bundle checks include chain, ordering, nonce continuity, size/count limits, reverts, target freshness, and state-block binding.
-
-## Rescue DAG and final-state invariants
-
-Rescue operations are modeled as a transaction graph rather than an unstructured array:
+EVM rescue operations can be modeled as a transaction DAG:
 
 ```text
 fund
@@ -138,25 +205,20 @@ fund
   -> native-sweep
 ```
 
-EraScript can reject:
+EraScript includes:
 
-- a declared recovery asset with no rescue step
-- a required native sweep with no sweep transaction
-- nonce-contiguous transactions with missing dependency edges
-- stale or differently anchored transaction simulations
-- a Flashbots bundle whose order differs from the graph
+- missing rescue/sweep detection
+- nonce/dependency validation
+- block-anchored RPC simulation
+- `debug_traceCall` state-diff evidence
+- fork sequence execution
+- final-state balance invariants
+- Flashbots exact-order verification
+- unsafe-boundary audit trail
 
-Post-execution state can be checked from block-anchored native/ERC-20 snapshots:
-
-```text
-victim.TOKEN == 0
-victim.ETH <= dust
-safe.TOKEN delta >= expected recovery
-```
+The same invariant concept is intended to be family-neutral, while state acquisition/execution evidence stays family-specific.
 
 ## Verification states
-
-EraScript deliberately separates planning, observation, and finality:
 
 ```text
 NOT_READY
@@ -165,7 +227,7 @@ RECOVERY_OBSERVED
 VERIFIED_RECOVERY
 ```
 
-`VERIFIED_RECOVERY` is reserved for a recovery whose final-state invariants are satisfied with finalized chain evidence.
+`VERIFIED_RECOVERY` is reserved for a recovery whose final-state invariants are satisfied with the configured chain-family finality evidence.
 
 Verification reports contain a deterministic `reportHash`. The CLI recomputes this hash before trusting a report.
 
@@ -175,26 +237,23 @@ era verify report.json --require VERIFIED_RECOVERY --json
 era verify report.json --integrity-only
 ```
 
-By default `era verify` requires `READY_FOR_BROADCAST` or stronger. `--integrity-only` validates only report schema/hash and must be chosen explicitly.
-
 ## AI agent workflow
 
 ```text
 User intent
+  -> AI declares chain family/profile
   -> AI generates .era
   -> era check --json
   -> AI repairs diagnostics
-  -> proof / ABI / authorization checks
-  -> RPC preparation
-  -> block-anchored simulation
-  -> signer policy
-  -> local or external signing
-  -> Flashbots/private execution gate
+  -> chain-specific proof/ABI/object/instruction checks
+  -> chain-specific preparation + simulation
+  -> signer/sponsor/proof policy
+  -> execution-backend gate
   -> READY_FOR_BROADCAST
   -> execution
-  -> block-anchored post-state verification
+  -> chain-specific effects/receipt/state verification
   -> RECOVERY_OBSERVED
-  -> finality
+  -> family-specific finality
   -> VERIFIED_RECOVERY
 ```
 
@@ -217,11 +276,15 @@ era --version
 
 ## Node.js / TypeScript compatibility
 
-Ordinary TypeScript remains valid EraScript and normal npm packages remain usable.
+Ordinary TypeScript remains valid EraScript and normal npm packages remain usable. Chain adapters will target the ecosystem's native TypeScript SDKs rather than reimplementing networking/cryptography unnecessarily.
 
-```era
-import { createPublicClient, http } from "viem"
-import fs from "node:fs"
+Current/planned adapter direction:
+
+```text
+EVM      -> viem
+Solana   -> @solana/kit
+Sui      -> @mysten/sui
+RAILGUN  -> @railgun-community/wallet + shared models/broadcaster client
 ```
 
 EraScript v0.1 syntax sugar remains available:
@@ -256,31 +319,45 @@ EraScript v0.1 syntax sugar remains available:
 - [x] signer capabilities and secret references
 - [x] external signer boundary
 - [x] `TokenAmount`
-- [x] ERC-2612 / Permit2
+- [x] ERC-2612 / Permit2 / WitnessTransfer safety profile
 - [x] Merkle scheme profiles and proof verification
 - [x] Flashbots target/state binding and re-simulation
-- [ ] unsafe-boundary audit trail
+- [x] unsafe-boundary audit trail
 
 ### v0.5 — rescue and account verification
 - [x] rescue transaction DAG
-- [x] nonce/dependency validation across transaction graphs
 - [x] final-state invariants
 - [x] block-anchored balance snapshots
-- [x] verification report hashing
-- [x] `era verify`
-- [x] EIP-7702 authorization lifecycle and transaction integration
-- [ ] Safe lifecycle
-- [ ] ERC-4337 UserOperation / bundler / paymaster types
-- [ ] fork/state-diff simulation adapters
+- [x] verification report hashing / `era verify`
+- [x] EIP-7702
+- [x] Safe lifecycle + Transaction Service evidence
+- [x] ERC-4337 UserOperation / Bundler / Paymaster types
+- [x] fork/state-diff simulation adapters
+
+### v0.6 — multi-chain foundation
+- [x] chain-family capability model
+- [x] generic EVM profile with unknown-by-default optional capabilities
+- [x] execution backend abstraction
+- [x] Solana typed primitives and blockhash-expiry evidence
+- [x] Sui typed primitives/object references/effects foundation
+- [x] RAILGUN overlay and proof/fee lifecycle foundation
+- [ ] EVM runtime capability discovery/override profiles
+- [ ] `@solana/kit` transaction adapter
+- [ ] Jito simulation/submission/finality adapter
+- [ ] `@mysten/sui` PTB/sponsorship/effects adapter
+- [ ] RAILGUN Wallet SDK + Waku Broadcaster adapter
+- [ ] family-neutral verification report envelope
+- [ ] family-aware external signer protocol
 
 ## Design documents
 
-- [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md) — normative Web3 specification
+- [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md) — EVM/Web3 specification
+- [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md) — EVM/Solana/Sui/RAILGUN architecture
 - [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md) — AI-first safety principles
 - [`docs/V03_IMPLEMENTATION.md`](docs/V03_IMPLEMENTATION.md) — transaction correctness
 - [`docs/V04_IMPLEMENTATION.md`](docs/V04_IMPLEMENTATION.md) — RPC evidence/private execution
-- [`docs/V05_IMPLEMENTATION.md`](docs/V05_IMPLEMENTATION.md) — rescue verification, external signing, and EIP-7702
+- [`docs/V05_IMPLEMENTATION.md`](docs/V05_IMPLEMENTATION.md) — rescue/account verification
 
 ## Status
 
-EraScript is experimental. Successful compilation, simulation, signing, broadcast, or bundle submission alone must not be treated as proof of successful asset recovery.
+EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
