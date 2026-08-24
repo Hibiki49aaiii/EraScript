@@ -9,6 +9,7 @@ import {
   SuiMainnetProfile,
   assertBackendCompatible,
   assertSolanaBlockhashFresh,
+  evmProfileFromViemChain,
   genericEvmProfile,
   lamports,
   mist,
@@ -21,6 +22,7 @@ import {
   suiObjectId,
   suiObjectRef,
   suiTransactionDigest,
+  withEvmCapabilityOverrides,
 } from "../src/chains/index.js";
 
 test("generic EVM profile does not assume optional protocol capabilities", () => {
@@ -30,6 +32,27 @@ test("generic EVM profile does not assume optional protocol capabilities", () =>
   assert.equal(chain.capabilities.eip7702, "unknown");
   assert.equal(chain.capabilities.bundleRpc, "unknown");
   assert.deepEqual(chain.executionBackends, ["public-rpc", "custom"]);
+});
+
+test("any viem-compatible EVM Chain metadata can enter EraScript without inventing protocol support", () => {
+  const profile = evmProfileFromViemChain({
+    id: 777,
+    name: "Example Rollup",
+    nativeCurrency: { name: "Example Ether", symbol: "XETH", decimals: 18 },
+    rpcUrls: { default: { http: ["https://example.invalid"] } },
+  }, {
+    finality: { kind: "evm-rollup", l2Inclusion: true, l1Settlement: "unknown" },
+  });
+  assert.equal(profile.chainId, 777);
+  assert.equal(profile.nativeSymbol, "XETH");
+  assert.equal(profile.finality.kind, "evm-rollup");
+  assert.equal(profile.capabilities.eip1559, "unknown");
+  assert.equal(profile.capabilities.eip7702, "unknown");
+  assert.equal(profile.capabilities.bundleRpc, "unknown");
+
+  const promoted = withEvmCapabilityOverrides(profile, { eip1559: "supported", finalizedTag: "supported" });
+  assert.equal(promoted.capabilities.eip1559, "supported");
+  assert.equal(promoted.capabilities.eip7702, "unknown");
 });
 
 test("execution backends are family-bound instead of globally assumed", () => {
