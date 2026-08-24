@@ -8,6 +8,7 @@ export * from "./nonce.js";
 export * from "./permit.js";
 export * from "./rpc.js";
 export * from "./secrets.js";
+export * from "./state.js";
 export * from "./token.js";
 export * from "./tx.js";
 export * from "./typed-data.js";
