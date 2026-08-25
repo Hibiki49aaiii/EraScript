@@ -11,10 +11,10 @@ import { unwrapWei } from "./values.js";
 
 export interface SafeTransactionServiceLike {
   readonly serviceUrl?: string;
-  proposeTransaction?: (...args: unknown[]) => Promise<unknown>;
-  confirmTransaction?: (...args: unknown[]) => Promise<unknown>;
-  getTransaction?: (...args: unknown[]) => Promise<unknown>;
-  getTransactionConfirmations?: (...args: unknown[]) => Promise<unknown>;
+  proposeTransaction?: (...args: any[]) => Promise<any>;
+  confirmTransaction?: (...args: any[]) => Promise<any>;
+  getTransaction?: (...args: any[]) => Promise<any>;
+  getTransactionConfirmations?: (...args: any[]) => Promise<any>;
 }
 
 export interface SafeServiceEvidence<C extends EvmChain = EvmChain> {
