@@ -52,6 +52,7 @@ export interface SolanaVerifiedPreparedTransaction extends Omit<SolanaPreparedTr
 export interface SolanaExecutionReadyTransaction extends SolanaVerifiedPreparedTransaction {
   readonly signatureAssemblyVerified: true;
   readonly signatureEvidenceHash: string;
+  readonly evidenceBindings: readonly { readonly kind: string; readonly hash: string }[];
 }
 
 export interface SolanaPreSignSimulationEvidence {
