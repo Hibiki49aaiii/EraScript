@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   assertRollupL1Finalized,
   createArbitrumSettlementAdapter,
+  createArbitrumSdkConfirmedAssertionReader,
   createOpStackSettlementAdapter,
   defineEvmChainProfile,
   evmExecutionVerificationReport,
@@ -172,6 +173,90 @@ test("Arbitrum confirmed assertion is not L1 finality until its parent-chain anc
   const finalizedReport = evmExecutionVerificationReport(profile, finalizedL2, finalized);
   assert.equal(finalizedReport.state, "VERIFIED_FINALITY");
   assert.equal(finalizedReport.verifiedFinality, true);
+});
+
+
+test("Arbitrum SDK bridge re-verifies canonical L1 hash and finalized head independently", async () => {
+  const profile = defineEvmChainProfile({
+    id: "evm.arbitrum.sdk-bridge-test",
+    name: "Arbitrum SDK Bridge Test",
+    family: "evm",
+    network: "mainnet",
+    nativeSymbol: "ETH",
+    chainId: 42161,
+    finality: { kind: "evm-rollup", l2Inclusion: true, l1Settlement: "supported" },
+    executionBackends: ["public-rpc"],
+    capabilities: {
+      eip1559: "supported", eip2930: "supported", eip4844: "unknown", eip7702: "unknown", erc4337: "supported",
+      debugTraceCall: "unknown", finalizedTag: "supported", safeTag: "supported", privateRpc: "unknown", bundleRpc: "unknown",
+    },
+  });
+  const from = address(`0x${"aa".repeat(20)}`, Arbitrum);
+  const to = address(`0x${"bb".repeat(20)}`, Arbitrum);
+  const draft = draftTransaction({ chain: Arbitrum, from, to });
+  const prepared = prepareTransaction(draft, {
+    nonce: nonce(Arbitrum, 3, "explicit"),
+    gas: gas(50_000n),
+    fees: { type: "eip1559", maxFeePerGas: maxFeePerGas(20n), maxPriorityFeePerGas: maxPriorityFeePerGas(1n) },
+  });
+  const simulated = recordSimulation(prepared, { status: "success", blockNumber: 400n, blockHash: ARB_L2_BLOCK_HASH, stateOverrides: false });
+  const signed = signSimulated(simulated, "0x01");
+  const broadcast = markBroadcast(signed, ARB_TX_HASH, 1_000);
+  const included = markIncluded(broadcast, { transactionHash: ARB_TX_HASH, blockHash: ARB_L2_BLOCK_HASH, blockNumber: 400n, status: "success", gasUsed: 42_000n });
+  const finalizedL2 = markFinalized(markConfirmed(included, 1));
+
+  const source = {
+    id: "arbitrum-sdk",
+    profileId: profile.id,
+    async readLatestConfirmedAssertion() {
+      return {
+        assertionId: "0xconfirmed-assertion",
+        childBlockNumber: 405n,
+        childBlockHash: `0x${"56".repeat(32)}` as `0x${string}`,
+        assertionL1BlockNumber: 500n,
+        assertionL1BlockHash: ARB_L1_BLOCK_HASH,
+        assertionL1TransactionHash: ARB_L1_TX_HASH,
+      };
+    },
+  };
+
+  let finalizedHead = 499n;
+  const l1Client = {
+    async getBlock(input: { blockTag: "finalized" } | { blockNumber: bigint }) {
+      if ("blockTag" in input) {
+        return { number: finalizedHead, hash: L1_FINALIZED_HASH };
+      }
+      return { number: input.blockNumber, hash: ARB_L1_BLOCK_HASH };
+    },
+  };
+
+  const reader = createArbitrumSdkConfirmedAssertionReader<typeof Arbitrum>({ profile, source, l1Client });
+  const adapter = createArbitrumSettlementAdapter<typeof Arbitrum>({ profile, reader });
+
+  const notFinalized = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter, nowMs: 5_000 });
+  assert.equal(notFinalized.stage, "l1-proven");
+  assert.equal(evmExecutionVerificationReport(profile, finalizedL2, notFinalized).state, "EXECUTION_OBSERVED");
+
+  finalizedHead = 500n;
+  const finalized = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter, nowMs: 6_000 });
+  assert.equal(finalized.stage, "l1-finalized");
+  assert.equal(evmExecutionVerificationReport(profile, finalizedL2, finalized).state, "VERIFIED_FINALITY");
+
+  const mismatchedL1Client = {
+    async getBlock(input: { blockTag: "finalized" } | { blockNumber: bigint }) {
+      if ("blockTag" in input) return { number: 600n, hash: L1_FINALIZED_HASH };
+      return { number: input.blockNumber, hash: `0x${"fe".repeat(32)}` as `0x${string}` };
+    },
+  };
+  const mismatchedReader = createArbitrumSdkConfirmedAssertionReader<typeof Arbitrum>({ profile, source, l1Client: mismatchedL1Client });
+  await assert.rejects(
+    () => mismatchedReader.readLatestConfirmed({
+      profile,
+      targetL2BlockNumber: 400n,
+      targetL2BlockHash: ARB_L2_BLOCK_HASH,
+    }),
+    (error: unknown) => error instanceof Error && "diagnostic" in error && (error as { diagnostic: { code: string } }).diagnostic.code === "ES4687",
+  );
 });
 
 test("RAILGUN private-state evidence is derived from refreshed before/after balance snapshots", async () => {
