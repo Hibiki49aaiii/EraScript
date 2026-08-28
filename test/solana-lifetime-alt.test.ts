@@ -12,6 +12,7 @@ import {
   signWithMultichainExternalSigner,
   simulateSolanaTransaction,
   solanaAddressLookupTable,
+  solanaBlockhash,
   solanaDurableNonceAccount,
   submitSolanaTransaction,
   verifySolanaAddressLookupReferences,
@@ -146,12 +147,12 @@ test("Solana durable nonce survives signing assembly and is revalidated before s
   });
   const transactionInspector = async () => ({
     version: 0 as const,
-    recentBlockhash: NONCE as ReturnType<typeof import("../src/chains/solana.js").solanaBlockhash>,
+    recentBlockhash: solanaBlockhash(NONCE),
     signerCount: 1,
   });
   const verified = await verifySolanaSerializedTransaction(prepared, async () => ({
     version: 0,
-    recentBlockhash: NONCE as ReturnType<typeof import("../src/chains/solana.js").solanaBlockhash>,
+    recentBlockhash: solanaBlockhash(NONCE),
     signerCount: 1,
   }));
   const signingInspector = async () => ({
