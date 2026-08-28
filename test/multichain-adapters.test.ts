@@ -32,7 +32,7 @@ import {
 } from "../src/chains/index.js";
 
 const SOL_BLOCKHASH = "1".repeat(32);
-const SOL_OTHER_BLOCKHASH = "2".repeat(32);
+const SOL_OTHER_BLOCKHASH = "So11111111111111111111111111111111111111112";
 const SOL_SIGNATURE = "1".repeat(64);
 const SUI_DIGEST = "1".repeat(32);
 const SUI_ADDRESS = `0x${"00".repeat(32)}`;
