@@ -28,6 +28,11 @@ test("Solana Kit codec bridge derives runtime and signing inspection from the sa
           lifetimeToken: SOL_BLOCKHASH,
           header: { numSignerAccounts: 2 },
           staticAccounts: [SOL_FEE_PAYER, SOL_SECOND_SIGNER, "11111111111111111111111111111111"],
+          addressTableLookups: [{
+            lookupTableAddress: "AddressLookupTab1e1111111111111111111111111",
+            writableIndexes: [1],
+            readonlyIndexes: [0, 2],
+          }],
         };
       },
     },
@@ -36,6 +41,11 @@ test("Solana Kit codec bridge derives runtime and signing inspection from the sa
   assert.equal(runtime.version, 0);
   assert.equal(runtime.recentBlockhash, SOL_BLOCKHASH);
   assert.equal(runtime.signerCount, 2);
+  assert.deepEqual(runtime.addressTableLookups, [{
+    table: "AddressLookupTab1e1111111111111111111111111",
+    writableIndexes: [1],
+    readonlyIndexes: [0, 2],
+  }]);
   const signing = await bridge.signingInspector(Uint8Array.from([1, 2, 3]));
   assert.equal(signing.signingPayloadBase64, Buffer.from(messageBytes).toString("base64"));
   assert.deepEqual(signing.requiredSigners, [SOL_FEE_PAYER, SOL_SECOND_SIGNER]);
