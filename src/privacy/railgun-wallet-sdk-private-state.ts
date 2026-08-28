@@ -1,9 +1,15 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { EvmChain } from "../web3/types.js";
-import type {
-  RailgunBalanceBucket,
-  RailgunPrivateBalanceReader,
+import {
+  captureRailgunPrivateBalance,
+  verifyRailgunPrivateBalanceChanges,
+  type RailgunBalanceBucket,
+  type RailgunPrivateBalanceExpectation,
+  type RailgunPrivateBalanceReader,
+  type RailgunPrivateBalanceSnapshot,
 } from "./railgun-private-state.js";
+import type { RailgunSdkProofSession } from "./railgun-adapter.js";
+import type { RailgunPrivateStateEvidence } from "./verification.js";
 
 export interface RailgunWalletSdkChainLike {
   readonly id: number;
@@ -223,5 +229,95 @@ export function createRailgunWalletSdkPrivateBalanceReader<
         amount: entry.amount,
       }));
     },
+  };
+}
+
+
+export interface RailgunWalletSdkPrivateTransitionEvidence<
+  C extends EvmChain,
+  TResult,
+> {
+  readonly kind: "railgun-wallet-sdk-private-transition";
+  readonly proofSession: RailgunSdkProofSession<C>;
+  readonly before: RailgunPrivateBalanceSnapshot<C>;
+  readonly after: RailgunPrivateBalanceSnapshot<C>;
+  readonly privateState: RailgunPrivateStateEvidence;
+  readonly transitionResult: TResult;
+}
+
+/**
+ * Captures one proof-bound RAILGUN private-state transition with a single
+ * chain/wallet/TXID-version source of truth.
+ *
+ * The transition callback should perform the relevant submission/wait step.
+ * This helper proves private balance movement only; base-EVM inclusion/finality
+ * remains a separate mandatory gate in railgunVerificationReport().
+ */
+export async function verifyRailgunWalletSdkPrivateTransition<
+  C extends EvmChain,
+  TResult,
+>(input: {
+  readonly reader: RailgunPrivateBalanceReader<C>;
+  readonly proofSession: RailgunSdkProofSession<C>;
+  readonly expectations: readonly RailgunPrivateBalanceExpectation[];
+  readonly balanceBucket?: RailgunBalanceBucket;
+  readonly transition: () => Promise<TResult>;
+  readonly beforeObservedAtMs?: number;
+  readonly afterObservedAtMs?: number;
+  readonly source?: string;
+}): Promise<RailgunWalletSdkPrivateTransitionEvidence<C, TResult>> {
+  const source = input.proofSession.source;
+  if (source.chain.id !== input.proofSession.proof.chain.id) {
+    fail(
+      "ES4737",
+      "RailgunPrivateTransitionProofChainMismatch",
+      "RAILGUN proof session source and generated proof belong to different chains.",
+      {
+        sourceChainId: source.chain.id,
+        proofChainId: input.proofSession.proof.chain.id,
+      },
+    );
+  }
+
+  const balanceBucket = input.balanceBucket ?? "Spendable";
+  const before = await captureRailgunPrivateBalance({
+    reader: input.reader,
+    chain: source.chain,
+    walletId: source.walletId,
+    txidVersion: source.txidVersion,
+    balanceBucket,
+    ...(input.beforeObservedAtMs !== undefined
+      ? { observedAtMs: input.beforeObservedAtMs }
+      : {}),
+  });
+
+  const transitionResult = await input.transition();
+
+  const after = await captureRailgunPrivateBalance({
+    reader: input.reader,
+    chain: source.chain,
+    walletId: source.walletId,
+    txidVersion: source.txidVersion,
+    balanceBucket,
+    ...(input.afterObservedAtMs !== undefined
+      ? { observedAtMs: input.afterObservedAtMs }
+      : {}),
+  });
+
+  const privateState = verifyRailgunPrivateBalanceChanges({
+    proofBindingHash: input.proofSession.proof.proofBindingHash,
+    before,
+    after,
+    expectations: input.expectations,
+    ...(input.source ? { source: input.source } : {}),
+  });
+
+  return {
+    kind: "railgun-wallet-sdk-private-transition",
+    proofSession: input.proofSession,
+    before,
+    after,
+    privateState,
+    transitionResult,
   };
 }
