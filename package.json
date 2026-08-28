@@ -39,8 +39,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test dist/test/*.test.js",
-    "dev": "node --enable-source-maps dist/src/cli.js"
+    "test": "npm run test:core",
+    "dev": "node --enable-source-maps dist/src/cli.js",
+    "test:core": "npm run build && node --test dist/test/*.test.js",
+    "test:live": "npm run build && node --test dist/test/live/*.test.js"
   },
   "dependencies": {
     "typescript": "^5.9.2",
@@ -50,6 +52,7 @@
     "@types/node": "^22.15.3",
     "@mysten/sui": "2.27.1",
     "@solana/kit": "8.1.0",
-    "@railgun-community/wallet": "10.9.0"
+    "@railgun-community/wallet": "10.9.0",
+    "@railgun-community/waku-broadcaster-client-node": "9.1.1"
   }
 }
