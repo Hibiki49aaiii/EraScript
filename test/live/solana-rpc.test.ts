@@ -28,15 +28,15 @@ async function rpc(method: string, params: readonly unknown[]): Promise<unknown>
   return payload.result;
 }
 
-function pending(method: string, params: readonly unknown[]) {
-  return { send: () => rpc(method, params) };
+function pending<T>(method: string, params: readonly unknown[]) {
+  return { send: () => rpc(method, params) as Promise<T> };
 }
 
 const client: SolanaKitClientLike = {
   rpc: {
-    getGenesisHash: () => pending("getGenesisHash", []),
-    getLatestBlockhash: (config) => pending("getLatestBlockhash", config ? [config] : []),
-    getBlockHeight: (config) => pending("getBlockHeight", config ? [config] : []),
+    getGenesisHash: () => pending<string>("getGenesisHash", []),
+    getLatestBlockhash: (config) => pending<unknown>("getLatestBlockhash", config ? [config] : []),
+    getBlockHeight: (config) => pending<unknown>("getBlockHeight", config ? [config] : []),
   },
 };
 
@@ -50,6 +50,7 @@ test("Solana mainnet RPC satisfies EraScript network and blockhash evidence gate
 
   const evidence = await captureSolanaRecentBlockhash(client, "confirmed");
   assert.match(String(evidence.blockhash), /^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
-  assert.ok(evidence.lastValidBlockHeight >= evidence.observedBlockHeight);
+  assert.notEqual(evidence.observedBlockHeight, undefined);
+  assert.ok(evidence.lastValidBlockHeight >= evidence.observedBlockHeight!);
   assert.equal(evidence.commitment, "confirmed");
 });
