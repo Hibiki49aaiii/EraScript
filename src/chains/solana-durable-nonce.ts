@@ -222,12 +222,19 @@ export async function assertSolanaDurableNonceStillCurrent(
       nonceAccount: binding.account.nonceAccount,
     });
   }
+  const observedFee = lamports(observed.lamportsPerSignature);
+  if (observedFee !== binding.account.lamportsPerSignature) {
+    fail("ES4712", "SolanaDurableNonceFeeRateChanged", "Durable nonce fee snapshot changed after verification; rebuild and re-authorize the transaction.", {
+      expected: binding.account.lamportsPerSignature.toString(),
+      actual: observedFee.toString(),
+      nonceAccount: binding.account.nonceAccount,
+    });
+  }
   if (observed.observedSlot < binding.account.observedSlot) {
     fail("ES4691", "InvalidSolanaDurableNonceSlot", "Nonce re-read came from an older slot than the original evidence.", {
       originalSlot: binding.account.observedSlot.toString(),
       observedSlot: observed.observedSlot.toString(),
     });
   }
-  lamports(observed.lamportsPerSignature);
   return binding;
 }
