@@ -10,6 +10,8 @@ export * from "./op-stack-finality.js";
 export * from "./arbitrum-finality.js";
 export * from "./arbitrum-sdk-bridge.js";
 export * from "./solana.js";
+export * from "./solana-durable-nonce.js";
+export * from "./solana-alt.js";
 export * from "./solana-adapter.js";
 export * from "./solana-kit-bridge.js";
 export * from "./solana-signing.js";
