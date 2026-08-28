@@ -23,6 +23,11 @@ export interface SolanaSigningInspection {
 
 export type SolanaSigningInspector = (serializedTransaction: Uint8Array) => SolanaSigningInspection | Promise<SolanaSigningInspection>;
 
+export interface SolanaSigningEvidenceBinding {
+  readonly kind: string;
+  readonly hash: string;
+}
+
 export interface SolanaSigningPlan {
   readonly kind: "solana-signing-plan";
   readonly profileId: string;
@@ -31,6 +36,7 @@ export interface SolanaSigningPlan {
   readonly payloadHash: string;
   readonly feePayer: SolanaAddress;
   readonly requiredSigners: readonly SolanaAddress[];
+  readonly evidenceBindings: readonly SolanaSigningEvidenceBinding[];
 }
 
 export interface SolanaSignerRequest {
@@ -85,7 +91,12 @@ function sameSigners(a: readonly SolanaAddress[], b: readonly SolanaAddress[]): 
   return a.length === b.length && a.every((signer, index) => signer === b[index]);
 }
 
-export async function createSolanaSigningPlan(profile: SolanaChainProfile, transaction: SolanaVerifiedPreparedTransaction, inspector: SolanaSigningInspector): Promise<SolanaSigningPlan> {
+export async function createSolanaSigningPlan(
+  profile: SolanaChainProfile,
+  transaction: SolanaVerifiedPreparedTransaction,
+  inspector: SolanaSigningInspector,
+  evidenceBindings: readonly SolanaSigningEvidenceBinding[] = [],
+): Promise<SolanaSigningPlan> {
   if (transaction.profileId !== profile.id) fail("ES4581", "SolanaSigningProfileMismatch", "Solana transaction belongs to a different chain profile.", { transactionProfile: transaction.profileId, profile: profile.id });
   let inspection: SolanaSigningInspection;
   try { inspection = await inspector(base64Bytes(transaction.serializedBase64)); }
@@ -97,6 +108,12 @@ export async function createSolanaSigningPlan(profile: SolanaChainProfile, trans
   const feePayer = solanaAddress(inspection.feePayer);
   if (requiredSigners[0] !== feePayer) fail("ES4585", "SolanaFeePayerSignerOrderMismatch", "Solana fee payer must be the first required signer in the decoded message header/account order.", { feePayer, firstSigner: requiredSigners[0] });
   if (transaction.inspection.signerCount !== undefined && transaction.inspection.signerCount !== requiredSigners.length) fail("ES4586", "SolanaSignerCountMismatch", "Signing inspector signer set does not match the serialized transaction inspection signer count.", { expected: transaction.inspection.signerCount, actual: requiredSigners.length });
+  const normalizedBindings = evidenceBindings.map((binding) => {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(binding.kind) || !/^0x[0-9a-fA-F]{64}$/.test(binding.hash)) {
+      return fail("ES4636", "InvalidSolanaSigningEvidenceBinding", "Solana signing evidence bindings require a stable kind and 32-byte hash.", { kind: binding.kind, hash: binding.hash });
+    }
+    return { kind: binding.kind, hash: binding.hash.toLowerCase() };
+  }).sort((a, b) => a.kind.localeCompare(b.kind) || a.hash.localeCompare(b.hash));
   return {
     kind: "solana-signing-plan",
     profileId: profile.id,
@@ -105,6 +122,7 @@ export async function createSolanaSigningPlan(profile: SolanaChainProfile, trans
     payloadHash: sha256(`solana-signing-payload:${signingPayloadBase64}`),
     feePayer,
     requiredSigners,
+    evidenceBindings: normalizedBindings,
   };
 }
 
@@ -118,7 +136,7 @@ export function createSolanaSigningRequests(profile: SolanaChainProfile, plan: S
       signer,
       payload: plan.signingPayloadBase64,
       payloadEncoding: "base64",
-      context: { kind: "solana-transaction-message", transactionBindingHash: plan.transactionBindingHash, payloadHash: plan.payloadHash, signerIndex: index, requiredSigners: plan.requiredSigners },
+      context: { kind: "solana-transaction-message", transactionBindingHash: plan.transactionBindingHash, payloadHash: plan.payloadHash, signerIndex: index, requiredSigners: plan.requiredSigners, evidenceBindings: plan.evidenceBindings },
       ...(options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {}),
       ...(options.nowMs !== undefined ? { nowMs: options.nowMs } : {}),
     });
@@ -140,6 +158,7 @@ export function bindSolanaVerifiedSignatures(plan: SolanaSigningPlan, requests: 
   const evidenceHash = sha256(JSON.stringify({
     payloadHash: plan.payloadHash,
     requiredSigners: plan.requiredSigners,
+    evidenceBindings: plan.evidenceBindings,
     signatures: bound.map((entry) => ({ signer: entry.signer, role: entry.role, signature: entry.signature.response.signature })),
   }));
   return { kind: "solana-signature-set-evidence", plan, signatures: bound, complete: true, evidenceHash };
@@ -174,7 +193,7 @@ export async function assembleAndVerifySolanaSignedTransaction(input: {
     recentBlockhash: input.source.recentBlockhash,
   });
   const verified = await verifySolanaSerializedTransaction(prepared, input.transactionInspector);
-  const assembledPlan = await createSolanaSigningPlan(input.profile, verified, input.signingInspector);
+  const assembledPlan = await createSolanaSigningPlan(input.profile, verified, input.signingInspector, input.signatureSet.plan.evidenceBindings);
 
   if (assembledPlan.signingPayloadBase64 !== input.signatureSet.plan.signingPayloadBase64 || assembledPlan.payloadHash !== input.signatureSet.plan.payloadHash) fail("ES4632", "SolanaAssembledPayloadMismatch", "Final signed Solana wire transaction contains message bytes different from those authorized by the signers.", { expectedPayloadHash: input.signatureSet.plan.payloadHash, actualPayloadHash: assembledPlan.payloadHash });
   if (!sameSigners(assembledPlan.requiredSigners, input.signatureSet.plan.requiredSigners)) fail("ES4633", "SolanaAssembledSignerSetMismatch", "Final signed Solana wire transaction has a different required signer sequence.", { expected: input.signatureSet.plan.requiredSigners, actual: assembledPlan.requiredSigners });
@@ -184,6 +203,7 @@ export async function assembleAndVerifySolanaSignedTransaction(input: {
     ...verified,
     signatureAssemblyVerified: true,
     signatureEvidenceHash: input.signatureSet.evidenceHash,
+    evidenceBindings: input.signatureSet.plan.evidenceBindings,
   };
   return {
     kind: "solana-assembled-signed-transaction",
