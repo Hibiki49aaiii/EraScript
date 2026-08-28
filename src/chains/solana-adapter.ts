@@ -11,6 +11,7 @@ import {
   type SolanaTransactionSignature,
   type SolanaTransactionVersion,
 } from "./solana.js";
+import type { SolanaAddressLookupReference } from "./solana-alt.js";
 import type { SolanaChainProfile } from "./types.js";
 
 declare const solanaAdapterBrand: unique symbol;
@@ -31,6 +32,7 @@ export interface SolanaTransactionInspection {
   readonly version: SolanaTransactionVersion;
   readonly recentBlockhash: SolanaBlockhash;
   readonly signerCount?: number;
+  readonly addressTableLookups?: readonly SolanaAddressLookupReference[];
 }
 export type SolanaTransactionInspector = (serializedTransaction: Uint8Array) => SolanaTransactionInspection | Promise<SolanaTransactionInspection>;
 
