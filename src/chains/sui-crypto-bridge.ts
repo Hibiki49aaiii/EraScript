@@ -5,24 +5,24 @@ import type {
 } from "./external-signer.js";
 import { suiAddress } from "./sui.js";
 
-export interface SuiSdkTransactionSignatureVerifierOptions {
+export interface SuiSdkTransactionSignatureVerifierOptions<Client = unknown> {
   readonly address?: string;
-  readonly client?: unknown;
+  readonly client?: Client;
 }
 
-export type SuiSdkIsValidTransactionSignature = (
+export type SuiSdkIsValidTransactionSignature<Client = unknown> = (
   transaction: Uint8Array,
   signature: string,
-  options?: SuiSdkTransactionSignatureVerifierOptions,
+  options?: SuiSdkTransactionSignatureVerifierOptions<Client>,
 ) => boolean | Promise<boolean>;
 
-export interface SuiSdkSignatureVerifierBridgeOptions {
-  readonly isValidTransactionSignature: SuiSdkIsValidTransactionSignature;
+export interface SuiSdkSignatureVerifierBridgeOptions<Client = unknown> {
+  readonly isValidTransactionSignature: SuiSdkIsValidTransactionSignature<Client>;
   /**
    * Optional current @mysten/sui client. Required by SDK verification for
    * schemes that need environmental state (for example zkLogin JWK/epoch data).
    */
-  readonly client?: unknown;
+  readonly client?: Client;
 }
 
 function canonicalBase64Bytes(value: string): Uint8Array | undefined {
@@ -43,8 +43,8 @@ function canonicalBase64Bytes(value: string): Uint8Array | undefined {
  * SDK environmental failures are intentionally allowed to propagate instead
  * of being converted into false, matching the current SDK contract.
  */
-export function createSuiSdkTransactionSignatureVerifier(
-  options: SuiSdkSignatureVerifierBridgeOptions,
+export function createSuiSdkTransactionSignatureVerifier<Client = unknown>(
+  options: SuiSdkSignatureVerifierBridgeOptions<Client>,
 ): MultichainSignatureVerifier {
   return async (input: {
     readonly request: MultichainSigningRequest;
