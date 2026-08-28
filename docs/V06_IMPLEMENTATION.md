@@ -101,6 +101,13 @@ Safety rules:
 
 Current v0.6 transaction versions: legacy and v0.
 
+Cryptographic signing:
+
+- `src/chains/solana-crypto.ts` provides a built-in Node.js Ed25519 verifier for exact Solana message bytes
+- Solana public keys and 64-byte signatures are decoded from their native base58 forms before verification
+- the verifier plugs directly into the family-neutral external-signer envelope
+- CI uses the real `@solana/kit` 8.1.0 transaction/message decoders against a valid v0 wire-transaction fixture
+
 ## 5. Jito adapter
 
 `src/chains/jito.ts`
@@ -165,6 +172,13 @@ Critical rule:
 EraScript inspects the returned result union and only accepts the successful transaction variant.
 
 `checksEnabled=false` simulation is inspection-only and cannot pass the execution gate.
+
+Signature verification:
+
+- `src/chains/sui-crypto-bridge.ts` accepts current `@mysten/sui/verify` transaction-signature verification directly
+- the SDK remains responsible for signature-scheme parsing, TransactionData intent hashing and address derivation
+- EraScript remains responsible for exact payload/request/context binding
+- package-level CI uses `@mysten/sui` 2.27.1 to generate and verify a real Ed25519 TransactionData-intent signature
 
 ## 7. RAILGUN Wallet SDK adapter
 
@@ -338,20 +352,25 @@ Implemented:
 GitHub Actions completed `npm install`, TypeScript build and the full test suite successfully on Node 22 at:
 
 ```text
-e2c1a67616219dca2395875748e839cde4c55d60
+5aae4a967438cd99a16f7ece087dbeffbada79cf
+129 tests / 129 passed / 0 failed
 ```
 
-This confirms the v0.6 core dependency tree and regression suite at that commit. Real-network integration remains a separate requirement.
+Pinned SDK integration dependencies at this checkpoint:
+
+- `@solana/kit` 8.1.0
+- `@mysten/sui` 2.27.1
+
+The suite includes a real Solana Kit v0 wire-transaction decode through the EraScript bridge and a real Sui Ed25519 TransactionData-intent signature through the EraScript verifier bridge. Live-network integration remains a separate requirement.
 
 ## 16. Remaining work
 
 The following must not yet be advertised as fully complete:
 
-1. Real-network integration tests against current `@solana/kit`, Jito, `@mysten/sui`, RAILGUN Wallet SDK and Waku packages.
-2. Built-in family-specific cryptographic verifier bridges for Solana Ed25519 signatures and Sui serialized signatures.
-3. Direct RAILGUN Wallet SDK/indexer bridge implementing the private-balance reader interface without application glue.
-4. Production OP Stack/Arbitrum deployment profiles and provider-specific integration fixtures.
-5. Additional EVM-chain profiles and provider capability discovery.
+1. Live-network integration tests for Solana RPC/Jito, Sui Core API, RAILGUN Wallet SDK/Waku and selected EVM providers.
+2. Direct RAILGUN Wallet SDK/indexer bridge implementing the private-balance reader interface without application glue.
+3. Production OP Stack/Arbitrum deployment profiles and provider-specific integration fixtures.
+4. Additional EVM-chain profiles and provider capability discovery.
 
 ## 17. Compatibility promise
 
