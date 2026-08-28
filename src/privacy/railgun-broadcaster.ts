@@ -11,8 +11,12 @@ import {
 } from "./railgun.js";
 import type { RailgunSdkPopulatedSession } from "./railgun-adapter.js";
 
-export interface RailgunWakuBroadcasterClientLike {
-  findBestBroadcaster(chain: unknown, tokenAddress: string): Promise<unknown>;
+export interface RailgunWakuBroadcasterClientLike<SdkChain = unknown> {
+  findBestBroadcaster(
+    chain: SdkChain,
+    tokenAddress: string,
+    useRelayAdapt: boolean,
+  ): unknown | Promise<unknown>;
 }
 
 export interface RailgunBroadcasterTransactionLike {
@@ -59,22 +63,47 @@ function evmHex(value: unknown, field: string, bytes?: number): `0x${string}` {
   return value as `0x${string}`;
 }
 
-export async function selectRailgunBroadcaster(input: {
-  client: RailgunWakuBroadcasterClientLike;
-  sdkChain: unknown;
+export async function selectRailgunBroadcaster<SdkChain>(input: {
+  client: RailgunWakuBroadcasterClientLike<SdkChain>;
+  sdkChain: SdkChain;
   feeToken: `0x${string}`;
   validateRailgunAddress: (value: string) => boolean;
+  useRelayAdapt?: boolean;
   nowMs?: number;
 }): Promise<RailgunBroadcasterSelection> {
   evmHex(input.feeToken, "feeToken", 20);
-  const raw = await input.client.findBestBroadcaster(input.sdkChain, input.feeToken);
+  const raw = await input.client.findBestBroadcaster(
+    input.sdkChain,
+    input.feeToken,
+    input.useRelayAdapt ?? false,
+  );
   if (!raw) fail("ES4522", "RailgunBroadcasterUnavailable", "No RAILGUN Broadcaster is currently available for the selected fee token.", { feeToken: input.feeToken });
   const record = object(raw, "selected Broadcaster");
+  const tokenFee = record.tokenFee === undefined
+    ? undefined
+    : object(record.tokenFee, "selected Broadcaster tokenFee");
   const addressValue = record.railgunAddress;
-  const feesIdValue = record.feesID ?? record.feesId;
+  const feesIdValue =
+    record.feesID ??
+    record.feesId ??
+    tokenFee?.feesID ??
+    tokenFee?.feesId;
+  const selectedToken = record.tokenAddress;
+  if (
+    typeof selectedToken === "string" &&
+    selectedToken.toLowerCase() !== input.feeToken.toLowerCase()
+  ) {
+    fail("ES4526", "RailgunBroadcasterFeeTokenMismatch", "Selected Broadcaster tokenAddress differs from the requested fee token.", {
+      requestedFeeToken: input.feeToken,
+      selectedToken,
+    });
+  }
   if (typeof addressValue !== "string" || typeof feesIdValue !== "string" || feesIdValue.length === 0) fail("ES4520", "MalformedRailgunBroadcasterResponse", "Selected Broadcaster is missing railgunAddress or feesID.");
   const rgAddress = railgunAddress(addressValue, input.validateRailgunAddress);
-  const feePerUnitGas = bigintValue(record.feePerUnitGas, "feePerUnitGas");
+  const feePerUnitGas = bigintValue(
+    record.feePerUnitGas ?? tokenFee?.feePerUnitGas,
+    "feePerUnitGas",
+  );
   return {
     kind: "railgun-broadcaster-selection",
     broadcasterId: `${rgAddress}:${feesIdValue}`,
