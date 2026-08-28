@@ -1,0 +1,51 @@
+name: Live Network Integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: live-network-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  public-readonly:
+    name: Live / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - solana-rpc
+          - sui-core
+          - jito
+    env:
+      SOLANA_RPC_URL: ${{ vars.SOLANA_RPC_URL }}
+      SUI_GRPC_URL: ${{ vars.SUI_GRPC_URL }}
+      JITO_BLOCK_ENGINE_URL: ${{ vars.JITO_BLOCK_ENGINE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+      - run: node --test "dist/test/live/${{ matrix.target }}.test.js"
+
+  railgun-waku:
+    name: Live / railgun-waku
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RAILGUN_TRUSTED_FEE_SIGNER: ${{ vars.RAILGUN_TRUSTED_FEE_SIGNER }}
+      RAILGUN_WAKU_DISCOVERY_TIMEOUT_MS: "90000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+      - run: node dist/test/live/railgun-waku.live.js
