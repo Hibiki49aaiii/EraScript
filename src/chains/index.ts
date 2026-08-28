@@ -15,6 +15,7 @@ export * from "./solana-alt.js";
 export * from "./solana-adapter.js";
 export * from "./solana-kit-bridge.js";
 export * from "./solana-signing.js";
+export * from "./solana-crypto.js";
 export * from "./jito.js";
 export * from "./sui.js";
 export * from "./sui-adapter.js";
