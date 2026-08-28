@@ -86,6 +86,23 @@ test("Solana signing plan binds every required signer to the exact decoded messa
   assert.equal(plan.feePayer, SOL_FEE_PAYER);
 });
 
+
+test("Solana external signing context binds durable-nonce/ALT evidence hashes", async () => {
+  const { verified, signingInspector } = await solanaFixture();
+  const planA = await createSolanaSigningPlan(SolanaMainnetProfile, verified, signingInspector, [
+    { kind: "durable-nonce", hash: `0x${"aa".repeat(32)}` },
+    { kind: "address-lookups", hash: `0x${"bb".repeat(32)}` },
+  ]);
+  const planB = await createSolanaSigningPlan(SolanaMainnetProfile, verified, signingInspector, [
+    { kind: "durable-nonce", hash: `0x${"cc".repeat(32)}` },
+    { kind: "address-lookups", hash: `0x${"bb".repeat(32)}` },
+  ]);
+  const requestsA = createSolanaSigningRequests(SolanaMainnetProfile, planA, { nowMs: 1_000, ttlMs: 60_000 });
+  const requestsB = createSolanaSigningRequests(SolanaMainnetProfile, planB, { nowMs: 1_000, ttlMs: 60_000 });
+  assert.notEqual(requestsA[0]!.request.contextHash, requestsB[0]!.request.contextHash);
+  assert.deepEqual(planA.evidenceBindings.map((entry) => entry.kind), ["address-lookups", "durable-nonce"]);
+});
+
 test("Solana final wire assembly, signature-verified simulation, and submission preserve one exact transaction", async () => {
   const { verified, signingInspector, evidence } = await solanaFixture();
   const transactionInspector = async () => ({ version: 0 as const, recentBlockhash: solanaBlockhash(SOL_BLOCKHASH), signerCount: 2 });
