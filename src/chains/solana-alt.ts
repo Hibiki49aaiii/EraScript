@@ -237,7 +237,7 @@ export async function assertSolanaLookupTablesStillUsable(input: {
       addresses: raw.addresses,
       status: raw.status,
       observedSlot: raw.observedSlot,
-      source: input.reader.id,
+      ...(input.reader.id ? { source: input.reader.id } : {}),
     }));
   }
 
