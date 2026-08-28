@@ -12,20 +12,13 @@ on:
 
 concurrency:
   group: live-network-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   public-readonly:
-    name: Live / ${{ matrix.target }}
+    name: Live / public-readonly
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - solana-rpc
-          - sui-core
-          - jito
     env:
       SOLANA_RPC_URL: ${{ vars.SOLANA_RPC_URL }}
       SUI_GRPC_URL: ${{ vars.SUI_GRPC_URL }}
@@ -37,7 +30,9 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
-      - run: node --test "dist/test/live/${{ matrix.target }}.test.js"
+      - run: node --test dist/test/live/solana-rpc.test.js
+      - run: node --test dist/test/live/sui-core.test.js
+      - run: node --test dist/test/live/jito.test.js
 
   railgun-waku:
     name: Live / railgun-waku
