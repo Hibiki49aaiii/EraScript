@@ -47,6 +47,8 @@
     "viem": "^2.55.19"
   },
   "devDependencies": {
-    "@types/node": "^22.15.3"
+    "@types/node": "^22.15.3",
+    "@mysten/sui": "2.27.1",
+    "@solana/kit": "8.1.0"
   }
 }
