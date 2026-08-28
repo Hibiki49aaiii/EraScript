@@ -7,6 +7,7 @@ import {
 } from "./external-signer.js";
 import { solanaAddress, type SolanaAddress } from "./solana.js";
 import {
+  prepareSolanaDurableNonceSerializedTransaction,
   prepareSolanaSerializedTransaction,
   verifySolanaSerializedTransaction,
   type SolanaExecutionReadyTransaction,
@@ -108,7 +109,23 @@ export async function createSolanaSigningPlan(
   const feePayer = solanaAddress(inspection.feePayer);
   if (requiredSigners[0] !== feePayer) fail("ES4585", "SolanaFeePayerSignerOrderMismatch", "Solana fee payer must be the first required signer in the decoded message header/account order.", { feePayer, firstSigner: requiredSigners[0] });
   if (transaction.inspection.signerCount !== undefined && transaction.inspection.signerCount !== requiredSigners.length) fail("ES4586", "SolanaSignerCountMismatch", "Signing inspector signer set does not match the serialized transaction inspection signer count.", { expected: transaction.inspection.signerCount, actual: requiredSigners.length });
-  const normalizedBindings = evidenceBindings.map((binding) => {
+  const automaticBindings: SolanaSigningEvidenceBinding[] = transaction.lifetimeKind === "durable-nonce"
+    ? [{ kind: "durable-nonce", hash: transaction.durableNonce.bindingHash }]
+    : [];
+  const combinedBindings = [...automaticBindings, ...evidenceBindings];
+  const byKind = new Map<string, string>();
+  for (const binding of combinedBindings) {
+    const existing = byKind.get(binding.kind);
+    if (existing && existing.toLowerCase() !== binding.hash.toLowerCase()) {
+      fail("ES4637", "ConflictingSolanaSigningEvidenceBinding", "Solana signing plan contains conflicting evidence hashes for the same semantic binding kind.", {
+        kind: binding.kind,
+        existing,
+        incoming: binding.hash,
+      });
+    }
+    byKind.set(binding.kind, binding.hash);
+  }
+  const normalizedBindings = [...byKind.entries()].map(([kind, hash]) => ({ kind, hash })).map((binding) => {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(binding.kind) || !/^0x[0-9a-fA-F]{64}$/.test(binding.hash)) {
       return fail("ES4636", "InvalidSolanaSigningEvidenceBinding", "Solana signing evidence bindings require a stable kind and 32-byte hash.", { kind: binding.kind, hash: binding.hash });
     }
@@ -186,12 +203,19 @@ export async function assembleAndVerifySolanaSignedTransaction(input: {
     return fail("ES4631", "SolanaTransactionAssemblyFailed", "Failed to assemble verified Solana signatures into the wire transaction.", { cause: error instanceof Error ? error.message : String(error) });
   }
 
-  const prepared = prepareSolanaSerializedTransaction({
-    profile: input.profile,
-    serializedBase64: assembledBase64,
-    version: input.source.version,
-    recentBlockhash: input.source.recentBlockhash,
-  });
+  const prepared = input.source.lifetimeKind === "recent-blockhash"
+    ? prepareSolanaSerializedTransaction({
+        profile: input.profile,
+        serializedBase64: assembledBase64,
+        version: input.source.version,
+        recentBlockhash: input.source.recentBlockhash,
+      })
+    : prepareSolanaDurableNonceSerializedTransaction({
+        profile: input.profile,
+        serializedBase64: assembledBase64,
+        version: input.source.version,
+        durableNonce: input.source.durableNonce,
+      });
   const verified = await verifySolanaSerializedTransaction(prepared, input.transactionInspector);
   const assembledPlan = await createSolanaSigningPlan(input.profile, verified, input.signingInspector, input.signatureSet.plan.evidenceBindings);
 
