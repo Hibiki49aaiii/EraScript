@@ -54,8 +54,13 @@ function bigintValue(value: unknown, field: string): bigint | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value === "bigint" && value >= 0n) return value;
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
-  if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
-  fail("ES4520", "MalformedRailgunBroadcasterResponse", `Broadcaster field '${field}' must be a non-negative integer.`, { field, value: String(value) });
+  if (
+    typeof value === "string" &&
+    (/^\d+$/.test(value) || /^0x[0-9a-fA-F]+$/.test(value))
+  ) {
+    return BigInt(value);
+  }
+  fail("ES4520", "MalformedRailgunBroadcasterResponse", `Broadcaster field '${field}' must be a non-negative decimal or 0x-prefixed integer.`, { field, value: String(value) });
 }
 function evmHex(value: unknown, field: string, bytes?: number): `0x${string}` {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]+$/.test(value) || value.length % 2 !== 0) fail("ES4521", "InvalidRailgunBroadcasterHex", `Broadcaster field '${field}' must be whole-byte EVM hex.`, { field });
