@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  WakuBroadcasterClient,
-} from "@railgun-community/waku-broadcaster-client-node";
+const WAKU_PACKAGE = "@railgun-community/waku-broadcaster-client-node";
 import { validateRailgunAddress } from "@railgun-community/wallet";
 import {
   selectRailgunBroadcaster,
@@ -18,7 +16,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForBroadcaster(): Promise<unknown> {
+async function waitForBroadcaster(WakuBroadcasterClient: any): Promise<unknown> {
   const deadline = Date.now() + DISCOVERY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const selected = WakuBroadcasterClient.findBestBroadcaster(
@@ -35,6 +33,7 @@ async function waitForBroadcaster(): Promise<unknown> {
 }
 
 async function main(): Promise<void> {
+  const { WakuBroadcasterClient } = await import(WAKU_PACKAGE);
   const statuses: string[] = [];
   const trustedFeeSigner = process.env.RAILGUN_TRUSTED_FEE_SIGNER || "";
 
@@ -53,7 +52,7 @@ async function main(): Promise<void> {
         maxVersion: "99.999.999",
       },
     },
-    (_chain, status) => {
+    (_chain: unknown, status: unknown) => {
       statuses.push(String(status));
     },
   );
@@ -62,7 +61,7 @@ async function main(): Promise<void> {
     assert.equal(WakuBroadcasterClient.isStarted(), true);
     assert.ok(WakuBroadcasterClient.getContentTopics().length >= 2);
 
-    const rawSelected = await waitForBroadcaster();
+    const rawSelected = await waitForBroadcaster(WakuBroadcasterClient);
     const selection = await selectRailgunBroadcaster({
       client: {
         async findBestBroadcaster() {
