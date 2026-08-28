@@ -11,7 +11,12 @@ import {
   type SolanaTransactionSignature,
   type SolanaTransactionVersion,
 } from "./solana.js";
-import type { SolanaAddressLookupReference } from "./solana-alt.js";
+import {
+  assertSolanaLookupTablesStillUsable,
+  type SolanaAddressLookupBindingEvidence,
+  type SolanaAddressLookupReference,
+  type SolanaAddressLookupTableReader,
+} from "./solana-alt.js";
 import {
   assertSolanaDurableNonceStillCurrent,
   type SolanaDurableNonceBindingEvidence,
@@ -27,6 +32,7 @@ export interface SolanaKitRpcLike {
   getGenesisHash?: () => SolanaRpcPending<string>;
   getLatestBlockhash?: (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   getBlockHeight?: (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
+  getSlot?: (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   simulateTransaction?: (transaction: string, config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   sendTransaction?: (transaction: string, config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   getSignatureStatuses?: (signatures: readonly string[], config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
@@ -70,6 +76,10 @@ export type SolanaExecutionReadyTransaction = SolanaVerifiedPreparedTransaction 
 
 export interface SolanaLifetimeGuardOptions {
   readonly durableNonceReader?: SolanaDurableNonceReader;
+  readonly addressLookups?: {
+    readonly binding: SolanaAddressLookupBindingEvidence;
+    readonly reader: SolanaAddressLookupTableReader;
+  };
 }
 
 export interface SolanaPreSignSimulationEvidence {
@@ -153,6 +163,39 @@ async function assertLifetimeUsable(transaction: SolanaVerifiedPreparedTransacti
     });
   }
   await assertSolanaDurableNonceStillCurrent(options.durableNonceReader, transaction.durableNonce);
+}
+async function assertExecutionBindingsUsable(
+  client: SolanaKitClientLike,
+  transaction: SolanaExecutionReadyTransaction,
+  commitment: SolanaCommitment,
+  options: SolanaLifetimeGuardOptions,
+): Promise<void> {
+  const references = transaction.inspection.addressTableLookups ?? [];
+  if (references.length === 0) return;
+
+  const boundHash = transaction.evidenceBindings.find((binding) => binding.kind === "address-lookups")?.hash;
+  if (!boundHash) {
+    fail("ES4713", "MissingSolanaLookupExecutionBinding", "ALT-backed Solana execution is missing address-lookups evidence in the signed transaction context.");
+  }
+  if (!options.addressLookups) {
+    fail("ES4714", "MissingSolanaLookupRuntimeEvidence", "ALT-backed Solana simulation/submission requires a lookup-table reader and the exact signed lookup binding.", {
+      expectedBindingHash: boundHash,
+    });
+  }
+  if (options.addressLookups.binding.bindingHash.toLowerCase() !== boundHash.toLowerCase()) {
+    fail("ES4715", "SolanaLookupRuntimeBindingMismatch", "Runtime ALT evidence does not match the address-lookups binding authorized by the signers.", {
+      expectedBindingHash: boundHash,
+      actualBindingHash: options.addressLookups.binding.bindingHash,
+    });
+  }
+
+  const getSlot = rpcMethod(client, "getSlot") as (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
+  const currentSlot = integer(responseValue(await getSlot({ commitment }).send()), "slot");
+  await assertSolanaLookupTablesStillUsable({
+    reader: options.addressLookups.reader,
+    binding: options.addressLookups.binding,
+    currentSlot,
+  });
 }
 function rpcMethod<K extends keyof SolanaKitRpcLike>(client: SolanaKitClientLike, name: K): NonNullable<SolanaKitRpcLike[K]> {
   const value = client.rpc[name];
@@ -239,6 +282,7 @@ export async function simulateSolanaPreSignTransaction(client: SolanaKitClientLi
 }
 
 export async function simulateSolanaTransaction(client: SolanaKitClientLike, transaction: SolanaExecutionReadyTransaction, commitment: SolanaCommitment = "confirmed", options: SolanaLifetimeGuardOptions = {}): Promise<SolanaSimulationEvidence> {
+  await assertExecutionBindingsUsable(client, transaction, commitment, options);
   const result = await simulateWire(client, transaction, commitment, true, options);
   return { state: "solana-simulated", transaction, commitment, signatureVerification: true, ...result };
 }
@@ -248,6 +292,7 @@ export async function submitSolanaTransaction(client: SolanaKitClientLike, simul
   const getBlockHeight = rpcMethod(client, "getBlockHeight") as (config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   const height = integer(responseValue(await getBlockHeight({ commitment: simulation.commitment }).send()), "blockHeight");
   await assertLifetimeUsable(simulation.transaction, height, options);
+  await assertExecutionBindingsUsable(client, simulation.transaction, simulation.commitment, options);
   const send = rpcMethod(client, "sendTransaction") as (transaction: string, config?: Record<string, unknown>) => SolanaRpcPending<unknown>;
   const raw = responseValue(await send(simulation.transaction.serializedBase64, { encoding: "base64", skipPreflight: false, preflightCommitment: simulation.commitment, ...(simulation.transaction.version === 0 ? { maxSupportedTransactionVersion: 0 } : {}) }).send());
   if (typeof raw !== "string") fail("ES4460", "MalformedSolanaRpcResponse", "sendTransaction did not return a transaction signature.");
