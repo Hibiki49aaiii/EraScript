@@ -32,6 +32,8 @@ export interface SolanaDurableNonceInstructionInspection {
 
 export interface SolanaDurableNonceTransactionInspection {
   readonly lifetimeToken: string;
+  /** Exact Solana message bytes that signers authorize, canonical base64. */
+  readonly signingPayloadBase64: string;
   readonly firstInstruction: SolanaDurableNonceInstructionInspection;
 }
 
@@ -45,7 +47,7 @@ export interface SolanaDurableNonceBindingEvidence {
   readonly lifetimeToken: SolanaBlockhash;
   readonly firstInstructionVerified: true;
   readonly consumptionSemantics: "advance-on-validation";
-  readonly transactionHash: string;
+  readonly signingPayloadHash: string;
   readonly bindingHash: string;
   readonly verifiedAtMs: number;
 }
@@ -169,9 +171,11 @@ export async function verifySolanaDurableNonceTransaction(input: {
   }
 
   const verifiedAtMs = input.nowMs ?? Date.now();
-  const transactionHash = `0x${createHash("sha256").update(Buffer.from(input.serializedBase64, "base64")).digest("hex")}`;
+  const signingPayloadBytes = canonicalBase64Bytes(inspection.signingPayloadBase64);
+  const canonicalSigningPayload = Buffer.from(signingPayloadBytes).toString("base64");
+  const signingPayloadHash = `0x${createHash("sha256").update(`solana-signing-payload:${canonicalSigningPayload}`).digest("hex")}`;
   const core = {
-    transactionHash,
+    signingPayloadHash,
     nonceAccount: input.account.nonceAccount,
     authority: input.account.authority,
     nonce: input.account.nonce,
@@ -188,7 +192,7 @@ export async function verifySolanaDurableNonceTransaction(input: {
     lifetimeToken,
     firstInstructionVerified: true,
     consumptionSemantics: "advance-on-validation",
-    transactionHash,
+    signingPayloadHash,
     bindingHash: hash(core),
     verifiedAtMs,
   };
