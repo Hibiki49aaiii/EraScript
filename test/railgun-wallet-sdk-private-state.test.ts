@@ -37,7 +37,7 @@ test("RAILGUN Wallet SDK reader subscribes before refresh and captures POI bucke
   };
 
   const sdk = {
-    async refreshBalances(_chain: { id: number }, walletIds: string[] | undefined) {
+    async refreshBalances(_chain: { id: number; type?: number }, walletIds: string[] | undefined) {
       calls.push(`refresh:${walletIds?.join(",")}`);
     },
     async awaitWalletScan() {
@@ -108,7 +108,7 @@ test("RAILGUN all-as-spendable mode mirrors non-POI SDK behavior and rejects fak
         async getTokenBalancesByBucket() {
           throw new Error("unexpected POI path");
         },
-        async getTokenBalances(_version: string, _chain: { id: number }, onlySpendable: boolean) {
+        async getTokenBalances(_version: string, _chain: { id: number; type?: number }, onlySpendable: boolean) {
           assert.equal(onlySpendable, false);
           return [{ tokenAddress: TOKEN, amount: 42n }] as TokenBalances;
         },
