@@ -10,6 +10,7 @@ export interface EvmChain<Name extends string = string, Id extends number = numb
 }
 
 export const Ethereum = { name: "Ethereum", id: 1 } as const satisfies EvmChain;
+export const Optimism = { name: "Optimism", id: 10 } as const satisfies EvmChain;
 export const BNBChain = { name: "BNBChain", id: 56 } as const satisfies EvmChain;
 export const Base = { name: "Base", id: 8453 } as const satisfies EvmChain;
 export const Arbitrum = { name: "Arbitrum", id: 42161 } as const satisfies EvmChain;
