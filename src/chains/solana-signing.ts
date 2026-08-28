@@ -112,6 +112,11 @@ export async function createSolanaSigningPlan(
   const automaticBindings: SolanaSigningEvidenceBinding[] = transaction.lifetimeKind === "durable-nonce"
     ? [{ kind: "durable-nonce", hash: transaction.durableNonce.bindingHash }]
     : [];
+  if ((transaction.inspection.addressTableLookups?.length ?? 0) > 0 && !evidenceBindings.some((binding) => binding.kind === "address-lookups")) {
+    fail("ES4638", "MissingSolanaLookupSigningBinding", "Solana v0 transaction references Address Lookup Tables but the signing plan does not include verified address-lookups evidence.", {
+      lookupTables: transaction.inspection.addressTableLookups?.map((lookup) => lookup.table) ?? [],
+    });
+  }
   const combinedBindings = [...automaticBindings, ...evidenceBindings];
   const byKind = new Map<string, string>();
   for (const binding of combinedBindings) {
