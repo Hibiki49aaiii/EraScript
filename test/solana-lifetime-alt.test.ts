@@ -18,8 +18,9 @@ const ALT = "AddressLookupTab1e1111111111111111111111111";
 const ADDRESS_A = SYSTEM_PROGRAM;
 const ADDRESS_B = NONCE_ACCOUNT;
 const TX_BASE64 = "AQ==";
+const MESSAGE_BASE64 = "Ag==";
 
-test("Solana durable nonce binds lifetime token, first instruction, account and authority", async () => {
+test("Solana durable nonce binds lifetime token, signed message, first instruction, account and authority", async () => {
   const account = solanaDurableNonceAccount({
     nonceAccount: NONCE_ACCOUNT,
     authority: AUTHORITY,
@@ -35,6 +36,7 @@ test("Solana durable nonce binds lifetime token, first instruction, account and 
     nowMs: 2_000,
     inspector: async () => ({
       lifetimeToken: NONCE,
+      signingPayloadBase64: MESSAGE_BASE64,
       firstInstruction: {
         programId: SYSTEM_PROGRAM,
         kind: "advance-nonce-account",
@@ -46,6 +48,7 @@ test("Solana durable nonce binds lifetime token, first instruction, account and 
   });
   assert.equal(binding.firstInstructionVerified, true);
   assert.equal(binding.consumptionSemantics, "advance-on-validation");
+  assert.match(binding.signingPayloadHash, /^0x[0-9a-f]{64}$/);
 
   await assert.doesNotReject(() => assertSolanaDurableNonceStillCurrent({
     async read() {
@@ -88,6 +91,7 @@ test("Solana durable nonce rejects non-first/mismatched AdvanceNonceAccount sema
       account,
       inspector: async () => ({
         lifetimeToken: NONCE,
+        signingPayloadBase64: MESSAGE_BASE64,
         firstInstruction: {
           programId: AUTHORITY,
           kind: "advance-nonce-account",
