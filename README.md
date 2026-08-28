@@ -343,7 +343,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] built-in Solana Ed25519 cryptographic signature verifier
 - [x] Sui serialized-signature verifier bridge via current `@mysten/sui/verify`
 - [x] package-level integration tests for `@solana/kit` 8.1.0 and `@mysten/sui` 2.27.1
-- [ ] direct RAILGUN Wallet SDK private-balance bridge
+- [x] direct RAILGUN Wallet SDK 10.9.0 private-balance bridge + proof-bound transition helper
 - [ ] live-network Jito/RAILGUN/provider integration matrix
 
 ## Design documents
@@ -360,4 +360,4 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
 
-The v0.6 tree has a dependency-backed GitHub Actions pass on Node 22 at commit `5aae4a967438cd99a16f7ece087dbeffbada79cf`: `npm install` succeeded with pinned `@solana/kit` 8.1.0 and `@mysten/sui` 2.27.1, TypeScript built successfully, and 129/129 tests passed, including real Solana Kit codec integration and a real Sui Ed25519 TransactionData-intent signature. v0.6 remains experimental until live-network provider/Jito/RAILGUN integration coverage is green.
+The v0.6 deterministic core tree has a dependency-backed GitHub Actions pass on Node 22 at commit `eda93c961fcdcda630085ea56aaeeb945b15e09e`: `npm install` succeeded with pinned `@solana/kit` 8.1.0, `@mysten/sui` 2.27.1 and `@railgun-community/wallet` 10.9.0, TypeScript built successfully, and 134/134 tests passed. Coverage includes real Solana Kit codec integration, a real Sui Ed25519 TransactionData-intent signature, direct RAILGUN Wallet SDK balance API compatibility, and proof-bound private-state transitions. v0.6 remains experimental until the separately isolated live-network integration suite is green.
