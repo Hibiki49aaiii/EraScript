@@ -45,6 +45,7 @@ export interface SolanaDurableNonceBindingEvidence {
   readonly lifetimeToken: SolanaBlockhash;
   readonly firstInstructionVerified: true;
   readonly consumptionSemantics: "advance-on-validation";
+  readonly transactionHash: string;
   readonly bindingHash: string;
   readonly verifiedAtMs: number;
 }
@@ -168,7 +169,9 @@ export async function verifySolanaDurableNonceTransaction(input: {
   }
 
   const verifiedAtMs = input.nowMs ?? Date.now();
+  const transactionHash = `0x${createHash("sha256").update(Buffer.from(input.serializedBase64, "base64")).digest("hex")}`;
   const core = {
+    transactionHash,
     nonceAccount: input.account.nonceAccount,
     authority: input.account.authority,
     nonce: input.account.nonce,
@@ -185,6 +188,7 @@ export async function verifySolanaDurableNonceTransaction(input: {
     lifetimeToken,
     firstInstructionVerified: true,
     consumptionSemantics: "advance-on-validation",
+    transactionHash,
     bindingHash: hash(core),
     verifiedAtMs,
   };
