@@ -9,6 +9,9 @@ import {
   createSolanaSigningPlan,
   createSolanaSigningRequests,
   prepareSolanaDurableNonceSerializedTransaction,
+  solanaRecentBlockhash,
+  solanaAddressLookupSigningEvidence,
+  prepareSolanaSerializedTransaction,
   signWithMultichainExternalSigner,
   simulateSolanaTransaction,
   solanaAddressLookupTable,
@@ -241,6 +244,114 @@ test("Solana durable nonce rejects non-first/mismatched AdvanceNonceAccount sema
       }),
     }),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4694",
+  );
+});
+
+
+test("Solana ALT binding is required at signing and revalidated before execution", async () => {
+  const recent = solanaRecentBlockhash({
+    blockhash: NONCE,
+    lastValidBlockHeight: 500n,
+    observedBlockHeight: 100n,
+  });
+  const table = solanaAddressLookupTable({
+    table: ALT,
+    authority: AUTHORITY,
+    lastExtendedSlot: 10n,
+    lastExtendedSlotStartIndex: 1,
+    addresses: [ADDRESS_A, ADDRESS_B],
+    status: "active",
+    observedSlot: 11n,
+  });
+  const references = [{
+    table: ALT,
+    writableIndexes: [1],
+    readonlyIndexes: [0],
+  }];
+  const prepared = prepareSolanaSerializedTransaction({
+    profile: SolanaMainnetProfile,
+    serializedBase64: TX_BASE64,
+    recentBlockhash: recent,
+  });
+  const transactionInspector = async () => ({
+    version: 0 as const,
+    recentBlockhash: solanaBlockhash(NONCE),
+    signerCount: 1,
+    addressTableLookups: references,
+  });
+  const verified = await verifySolanaSerializedTransaction(prepared, transactionInspector);
+  const lookupBinding = verifySolanaAddressLookupReferences({
+    version: 0,
+    references,
+    tables: [table],
+    currentSlot: 11n,
+  });
+  const signingInspector = async () => ({
+    signingPayloadBase64: MESSAGE_BASE64,
+    requiredSigners: [AUTHORITY],
+    feePayer: AUTHORITY,
+  });
+
+  await assert.rejects(
+    () => createSolanaSigningPlan(SolanaMainnetProfile, verified, signingInspector),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4638",
+  );
+
+  const plan = await createSolanaSigningPlan(SolanaMainnetProfile, verified, signingInspector, [
+    solanaAddressLookupSigningEvidence(verified, lookupBinding),
+  ]);
+  const requests = createSolanaSigningRequests(SolanaMainnetProfile, plan, { nowMs: 1_000, ttlMs: 60_000 });
+  const signatures = await Promise.all(requests.map((entry) => verifiedSignature(entry.request)));
+  const signatureSet = bindSolanaVerifiedSignatures(plan, requests, signatures);
+  const assembled = await assembleAndVerifySolanaSignedTransaction({
+    profile: SolanaMainnetProfile,
+    source: verified,
+    signatureSet,
+    assembler: { async assemble() { return SIGNED_TX_BASE64; } },
+    transactionInspector,
+    signingInspector,
+  });
+
+  let status: "active" | "deactivated" = "active";
+  const lookupReader = {
+    async read() {
+      return {
+        authority: AUTHORITY,
+        deactivationSlot: status === "active" ? (1n << 64n) - 1n : 12n,
+        lastExtendedSlot: 10n,
+        lastExtendedSlotStartIndex: 1,
+        addresses: [ADDRESS_A, ADDRESS_B],
+        status,
+        observedSlot: 12n,
+      };
+    },
+  };
+  const client = {
+    rpc: {
+      getBlockHeight: () => ({ send: async () => 120n }),
+      getSlot: () => ({ send: async () => 12n }),
+      simulateTransaction: () => ({
+        send: async () => ({ value: { err: null, logs: ["alt-ok"], unitsConsumed: 250n } }),
+      }),
+    },
+  };
+
+  await assert.rejects(
+    () => simulateSolanaTransaction(client, assembled.transaction),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4714",
+  );
+
+  const simulation = await simulateSolanaTransaction(client, assembled.transaction, "confirmed", {
+    addressLookups: { binding: lookupBinding, reader: lookupReader },
+  });
+  assert.equal(simulation.success, true);
+
+  status = "deactivated";
+  await assert.rejects(
+    () => simulateSolanaTransaction(client, assembled.transaction, "confirmed", {
+      addressLookups: { binding: lookupBinding, reader: lookupReader },
+    }),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4705",
   );
 });
 
