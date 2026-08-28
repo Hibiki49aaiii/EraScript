@@ -72,7 +72,8 @@ Current primitives/adapters include:
 - `processed / confirmed / finalized`
 - recent blockhash + `lastValidBlockHeight`
 - legacy/v0 serialized transactions
-- `@solana/kit`-compatible structural RPC adapter
+- `@solana/kit` 8.1.0 codec compatibility tested in CI
+- built-in Node.js Ed25519 cryptographic verifier for Solana external signatures
 - pre-sign simulation separated from signature-verified execution simulation
 - exact message/multi-signer/fee-payer binding
 - post-signature wire-transaction reinspection
@@ -112,7 +113,9 @@ Current primitives/adapters include:
 - sender/gas-owner binding
 - exact-byte sender/sponsor signature binding
 - sponsored execution helper that only uses Evidence-bound signatures
-- `@mysten/sui` v2 Core-API-compatible structural adapter
+- `@mysten/sui` 2.27.1 Core-API-compatible structural adapter
+- direct `@mysten/sui/verify` transaction-signature bridge
+- real Ed25519 TransactionData-intent signature tested in CI
 - checks-enabled simulation
 - `Transaction` vs `FailedTransaction` discrimination
 - transaction effects
@@ -337,9 +340,11 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] Sui sponsored-transaction exact-byte/signature-role verifier
 - [x] RAILGUN private-state reader/evidence interface
 - [x] rollup L2 inclusion -> L1 settlement evidence (OP Stack + Arbitrum abstractions)
-- [ ] built-in Solana/Sui family cryptographic signature verifiers
+- [x] built-in Solana Ed25519 cryptographic signature verifier
+- [x] Sui serialized-signature verifier bridge via current `@mysten/sui/verify`
+- [x] package-level integration tests for `@solana/kit` 8.1.0 and `@mysten/sui` 2.27.1
 - [ ] direct RAILGUN Wallet SDK private-balance bridge
-- [ ] real-network SDK integration test matrix
+- [ ] live-network Jito/RAILGUN/provider integration matrix
 
 ## Design documents
 
@@ -355,4 +360,4 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
 
-The v0.6 core tree has a dependency-backed GitHub Actions pass on Node 22 (`npm install` -> TypeScript build -> full test suite) at commit `e2c1a67616219dca2395875748e839cde4c55d60`. v0.6 remains experimental until the real-network SDK integration matrix and family-specific cryptographic verifier bridges are also green.
+The v0.6 tree has a dependency-backed GitHub Actions pass on Node 22 at commit `5aae4a967438cd99a16f7ece087dbeffbada79cf`: `npm install` succeeded with pinned `@solana/kit` 8.1.0 and `@mysten/sui` 2.27.1, TypeScript built successfully, and 129/129 tests passed, including real Solana Kit codec integration and a real Sui Ed25519 TransactionData-intent signature. v0.6 remains experimental until live-network provider/Jito/RAILGUN integration coverage is green.
