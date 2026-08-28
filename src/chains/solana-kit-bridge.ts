@@ -48,7 +48,7 @@ function readonlyBytes(value: SolanaKitReadonlyBytes, label: string): Uint8Array
   const bytes = new Uint8Array(value.length);
   for (let index = 0; index < value.length; index += 1) {
     const byte = value[index];
-    if (!Number.isSafeInteger(byte) || byte < 0 || byte > 255) {
+    if (typeof byte !== "number" || !Number.isSafeInteger(byte) || byte < 0 || byte > 255) {
       fail("ES4610", "MalformedSolanaKitDecodedTransaction", `${label} contains a non-byte value.`, {
         index,
         value: String(byte),
