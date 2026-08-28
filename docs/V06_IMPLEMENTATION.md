@@ -240,7 +240,7 @@ Verification deliberately separates:
 
 Base-chain finality alone does not prove the expected private wallet state.
 
-The private-state reader layer refreshes before/after shielded balances and verifies proof-bound delta/final-amount assertions.
+The private-state reader layer refreshes before/after shielded balances and verifies proof-bound delta/final-amount assertions. `src/privacy/railgun-wallet-sdk-private-state.ts` now maps the public Wallet SDK 10.9.0 balance APIs directly into that reader contract, subscribes to `awaitWalletScan` before calling `refreshBalances` to avoid scan-event races, and provides a proof-session-bound transition helper that derives chain/wallet/TXID-version/proof binding from one source of truth.
 
 `VERIFIED_FINALITY` requires both finalized base-EVM execution and proof-bound private-state assertions.
 
@@ -352,25 +352,25 @@ Implemented:
 GitHub Actions completed `npm install`, TypeScript build and the full test suite successfully on Node 22 at:
 
 ```text
-5aae4a967438cd99a16f7ece087dbeffbada79cf
-129 tests / 129 passed / 0 failed
+eda93c961fcdcda630085ea56aaeeb945b15e09e
+134 tests / 134 passed / 0 failed
 ```
 
 Pinned SDK integration dependencies at this checkpoint:
 
 - `@solana/kit` 8.1.0
 - `@mysten/sui` 2.27.1
+- `@railgun-community/wallet` 10.9.0
 
-The suite includes a real Solana Kit v0 wire-transaction decode through the EraScript bridge and a real Sui Ed25519 TransactionData-intent signature through the EraScript verifier bridge. Live-network integration remains a separate requirement.
+The suite includes a real Solana Kit v0 wire-transaction decode through the EraScript bridge, a real Sui Ed25519 TransactionData-intent signature through the EraScript verifier bridge, direct type/runtime compatibility with the public RAILGUN Wallet SDK balance exports, and proof-bound private-state transition coverage. Live-network integration is intentionally a separate requirement.
 
 ## 16. Remaining work
 
 The following must not yet be advertised as fully complete:
 
 1. Live-network integration tests for Solana RPC/Jito, Sui Core API, RAILGUN Wallet SDK/Waku and selected EVM providers.
-2. Direct RAILGUN Wallet SDK/indexer bridge implementing the private-balance reader interface without application glue.
-3. Production OP Stack/Arbitrum deployment profiles and provider-specific integration fixtures.
-4. Additional EVM-chain profiles and provider capability discovery.
+2. Production OP Stack/Arbitrum deployment profiles and provider-specific integration fixtures.
+3. Additional EVM-chain profiles and provider capability discovery.
 
 ## 17. Compatibility promise
 
