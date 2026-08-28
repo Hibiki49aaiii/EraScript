@@ -6,6 +6,7 @@ import {
   type VerifiedMultichainSignature,
 } from "./external-signer.js";
 import { solanaAddress, type SolanaAddress } from "./solana.js";
+import type { SolanaAddressLookupBindingEvidence } from "./solana-alt.js";
 import {
   prepareSolanaDurableNonceSerializedTransaction,
   prepareSolanaSerializedTransaction,
@@ -24,10 +25,13 @@ export interface SolanaSigningInspection {
 
 export type SolanaSigningInspector = (serializedTransaction: Uint8Array) => SolanaSigningInspection | Promise<SolanaSigningInspection>;
 
-export interface SolanaSigningEvidenceBinding {
+declare const solanaSigningEvidenceBrand: unique symbol;
+export type SolanaSigningEvidenceBinding = {
   readonly kind: string;
   readonly hash: string;
-}
+  readonly source: "era-verified" | "policy";
+  readonly [solanaSigningEvidenceBrand]: true;
+};
 
 export interface SolanaSigningPlan {
   readonly kind: "solana-signing-plan";
@@ -92,6 +96,45 @@ function sameSigners(a: readonly SolanaAddress[], b: readonly SolanaAddress[]): 
   return a.length === b.length && a.every((signer, index) => signer === b[index]);
 }
 
+
+export function solanaPolicySigningEvidence(kind: string, hash: string): SolanaSigningEvidenceBinding {
+  if (kind === "durable-nonce" || kind === "address-lookups") {
+    fail("ES4639", "ReservedSolanaSigningEvidenceKind", "Reserved Solana runtime evidence kinds can only be created from verified EraScript evidence.", { kind });
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(kind) || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+    fail("ES4636", "InvalidSolanaSigningEvidenceBinding", "Solana policy evidence binding requires a stable kind and 32-byte hash.", { kind, hash });
+  }
+  return { kind, hash: hash.toLowerCase(), source: "policy" } as SolanaSigningEvidenceBinding;
+}
+
+export function solanaAddressLookupSigningEvidence(
+  transaction: SolanaVerifiedPreparedTransaction,
+  binding: SolanaAddressLookupBindingEvidence,
+): SolanaSigningEvidenceBinding {
+  const references = transaction.inspection.addressTableLookups ?? [];
+  if (references.length === 0) {
+    fail("ES4641", "UnexpectedSolanaLookupSigningBinding", "Address-lookup evidence cannot be attached to a Solana transaction that does not reference any ALT.", {
+      transactionBindingHash: transaction.bindingHash,
+    });
+  }
+  const referencedTables = references.map((reference) => solanaAddress(reference.table));
+  const resolvedTables = binding.resolutions.map((resolution) => resolution.table);
+  if (
+    referencedTables.length !== resolvedTables.length
+    || referencedTables.some((table, index) => table !== resolvedTables[index])
+  ) {
+    fail("ES4642", "SolanaLookupSigningBindingMismatch", "Address-lookup evidence does not resolve the exact ALT sequence referenced by the transaction.", {
+      referencedTables,
+      resolvedTables,
+    });
+  }
+  return {
+    kind: "address-lookups",
+    hash: binding.bindingHash.toLowerCase(),
+    source: "era-verified",
+  } as SolanaSigningEvidenceBinding;
+}
+
 export async function createSolanaSigningPlan(
   profile: SolanaChainProfile,
   transaction: SolanaVerifiedPreparedTransaction,
@@ -110,7 +153,11 @@ export async function createSolanaSigningPlan(
   if (requiredSigners[0] !== feePayer) fail("ES4585", "SolanaFeePayerSignerOrderMismatch", "Solana fee payer must be the first required signer in the decoded message header/account order.", { feePayer, firstSigner: requiredSigners[0] });
   if (transaction.inspection.signerCount !== undefined && transaction.inspection.signerCount !== requiredSigners.length) fail("ES4586", "SolanaSignerCountMismatch", "Signing inspector signer set does not match the serialized transaction inspection signer count.", { expected: transaction.inspection.signerCount, actual: requiredSigners.length });
   const automaticBindings: SolanaSigningEvidenceBinding[] = transaction.lifetimeKind === "durable-nonce"
-    ? [{ kind: "durable-nonce", hash: transaction.durableNonce.bindingHash }]
+    ? [{
+        kind: "durable-nonce",
+        hash: transaction.durableNonce.bindingHash.toLowerCase(),
+        source: "era-verified",
+      } as SolanaSigningEvidenceBinding]
     : [];
   if ((transaction.inspection.addressTableLookups?.length ?? 0) > 0 && !evidenceBindings.some((binding) => binding.kind === "address-lookups")) {
     fail("ES4638", "MissingSolanaLookupSigningBinding", "Solana v0 transaction references Address Lookup Tables but the signing plan does not include verified address-lookups evidence.", {
@@ -130,11 +177,12 @@ export async function createSolanaSigningPlan(
     }
     byKind.set(binding.kind, binding.hash);
   }
-  const normalizedBindings = [...byKind.entries()].map(([kind, hash]) => ({ kind, hash })).map((binding) => {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(binding.kind) || !/^0x[0-9a-fA-F]{64}$/.test(binding.hash)) {
-      return fail("ES4636", "InvalidSolanaSigningEvidenceBinding", "Solana signing evidence bindings require a stable kind and 32-byte hash.", { kind: binding.kind, hash: binding.hash });
+  const normalizedBindings = [...byKind.entries()].map(([kind, hash]) => {
+    const original = combinedBindings.find((binding) => binding.kind === kind && binding.hash.toLowerCase() === hash.toLowerCase());
+    if (!original || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(kind) || !/^0x[0-9a-fA-F]{64}$/.test(hash)) {
+      return fail("ES4636", "InvalidSolanaSigningEvidenceBinding", "Solana signing evidence bindings require an EraScript-produced binding, stable kind and 32-byte hash.", { kind, hash });
     }
-    return { kind: binding.kind, hash: binding.hash.toLowerCase() };
+    return { kind, hash: hash.toLowerCase(), source: original.source } as SolanaSigningEvidenceBinding;
   }).sort((a, b) => a.kind.localeCompare(b.kind) || a.hash.localeCompare(b.hash));
   return {
     kind: "solana-signing-plan",
