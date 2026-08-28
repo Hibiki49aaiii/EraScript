@@ -84,7 +84,7 @@ test("RAILGUN Broadcaster adapter accepts current nested SelectedBroadcaster tok
           railgunAddress: RAILGUN_ADDRESS,
           tokenAddress: TOKEN,
           tokenFee: {
-            feePerUnitGas: "2",
+            feePerUnitGas: "0x2",
             expiration: 10_000,
             feesID: "nested-fee-1",
             availableWallets: 3,
