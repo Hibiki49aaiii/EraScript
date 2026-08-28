@@ -81,10 +81,7 @@ test("@mysten/sui 2.27 verifies an actual TransactionData-intent signature throu
   };
 
   const verifier = createSuiSdkTransactionSignatureVerifier({
-    isValidTransactionSignature: (bytes, signature, options) =>
-      isValidTransactionSignature(bytes, signature, {
-        ...(options?.address ? { address: options.address } : {}),
-      }),
+    isValidTransactionSignature,
   });
 
   const verified = await signWithMultichainExternalSigner({
