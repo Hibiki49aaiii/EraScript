@@ -72,9 +72,13 @@ The adapter is structural: applications can pass a current `@solana/kit` RPC cli
 Implemented evidence:
 
 ```text
-recent blockhash + lastValidBlockHeight
-    -> prepared serialized transaction
-    -> signature-verified simulation
+recent blockhash | durable nonce
+    -> serialized-byte inspection
+    -> optional ALT resolution evidence
+    -> exact signing message + required signer set
+    -> verified signatures
+    -> final wire assembly + reinspection
+    -> sigVerify=true execution simulation
     -> submission
     -> signature status
     -> finalized commitment
@@ -84,8 +88,12 @@ Safety rules:
 
 - addresses/blockhashes/signatures are base58-decoded to exact byte lengths
 - transaction serialization is canonical base64
-- blockhash freshness is checked before simulation and again before submission
-- simulation uses `sigVerify: true`
+- pre-sign simulation uses `sigVerify: false` and can never authorize submission
+- final execution simulation requires an assembly-verified signed wire transaction and `sigVerify: true`
+- recent blockhash freshness is checked before simulation and again before submission
+- durable nonce transactions bind nonce account, authority, fee snapshot, first `AdvanceNonceAccount` instruction and exact signing-message hash
+- durable nonce account state is re-read immediately before simulation and submission
+- v0 ALT references are decoded, resolved against on-chain table Evidence, checked for same-slot warm-up/deactivation, bound into signer context and re-read before execution
 - recent blockhash replacement is disabled for verification
 - submission does not imply success
 - `getSignatureStatuses` execution errors are retained
@@ -113,6 +121,9 @@ Rules:
 
 - 1–5 transactions
 - canonical base64
+- Jito `getTipAccounts` Evidence
+- exact serialized tip-transfer inspection
+- ALT-resolved Jito tip accounts are rejected
 - explicit positive tip evidence
 - tip transaction index must be inside bundle
 - optional expected transaction signatures are compared with the landed bundle
@@ -138,6 +149,9 @@ Implemented:
 - optional chain-identifier verification
 - serialized transaction binding
 - sender / gas-owner binding
+- exact final-BCS sender/sponsor signing plan
+- sender and sponsor must authorize identical bytes
+- sponsored execution only consumes Evidence-bound signatures
 - checks-enabled simulation
 - execution with one or more signatures
 - `Transaction` versus `FailedTransaction` discrimination
@@ -211,6 +225,8 @@ Verification deliberately separates:
 3. private wallet post-state evidence.
 
 Base-chain finality alone does not prove the expected private wallet state.
+
+The private-state reader layer refreshes before/after shielded balances and verifies proof-bound delta/final-amount assertions.
 
 `VERIFIED_FINALITY` requires both finalized base-EVM execution and proof-bound private-state assertions.
 
@@ -307,22 +323,37 @@ The v0.6 work adds tests for:
 - family-neutral verification report hash integrity
 - diagnostic code uniqueness
 
-## 14. Remaining work
+## 14. Rollup settlement
+
+Implemented:
+
+- generic L2 vs L1 settlement Evidence
+- OP Stack `optimism_syncStatus` / `optimism_outputAtBlock` adapter
+- Arbitrum Nitro/BOLD confirmed-assertion abstraction
+- Arbitrum SDK bridge that independently re-checks the assertion anchor against canonical L1 RPC and the L1 `finalized` head
+- rollup verification reports remain `EXECUTION_OBSERVED` after L2 finality and only become `VERIFIED_FINALITY` with protocol-specific L1-finalized Evidence
+
+## 15. CI status
+
+GitHub Actions completed `npm install`, TypeScript build and the full test suite successfully on Node 22 at:
+
+```text
+e2c1a67616219dca2395875748e839cde4c55d60
+```
+
+This confirms the v0.6 core dependency tree and regression suite at that commit. Real-network integration remains a separate requirement.
+
+## 16. Remaining work
 
 The following must not yet be advertised as fully complete:
 
 1. Real-network integration tests against current `@solana/kit`, Jito, `@mysten/sui`, RAILGUN Wallet SDK and Waku packages.
-2. Solana family-specific signature verifier/injection adapter for unsigned messages and multi-signer transactions.
-3. Sui sender/gas-owner/sponsor signature-role verifier with exact transaction-byte identity checks.
-4. Durable nonce workflow for Solana.
-5. Address Lookup Table lifecycle evidence.
-6. Sui sponsored-transaction policy engine.
-7. RAILGUN private-state reader/indexer adapter that produces `RailgunPrivateStateEvidence` automatically.
-8. Rollup L2 inclusion versus L1 settlement adapters.
-9. Additional EVM-chain profiles and provider capability discovery.
-10. Full dependency-backed CI confirmation.
+2. Built-in family-specific cryptographic verifier bridges for Solana Ed25519 signatures and Sui serialized signatures.
+3. Direct RAILGUN Wallet SDK/indexer bridge implementing the private-balance reader interface without application glue.
+4. Production OP Stack/Arbitrum deployment profiles and provider-specific integration fixtures.
+5. Additional EVM-chain profiles and provider capability discovery.
 
-## 15. Compatibility promise
+## 17. Compatibility promise
 
 EraScript v0.6 does not mean "every chain behaves the same."
 
