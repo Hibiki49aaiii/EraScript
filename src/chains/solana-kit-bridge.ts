@@ -16,6 +16,11 @@ export interface SolanaKitCompiledMessageLike {
   readonly lifetimeToken: string;
   readonly header: { readonly numSignerAccounts: number };
   readonly staticAccounts: readonly string[];
+  readonly addressTableLookups?: readonly {
+    readonly lookupTableAddress: string;
+    readonly writableIndexes: readonly number[];
+    readonly readonlyIndexes: readonly number[];
+  }[];
 }
 
 export interface SolanaKitCodecBridgeInput {
@@ -53,7 +58,20 @@ export function createSolanaKitEraInspectors(input: SolanaKitCodecBridgeInput): 
   const transactionInspector: SolanaTransactionInspector = (serializedTransaction): SolanaTransactionInspection => {
     const { message } = decode(input, serializedTransaction);
     if (message.version === 1) fail("ES4612", "UnsupportedSolanaKitTransactionVersion", "EraScript v0.6 runtime gate currently supports Solana legacy/v0 transactions; v1 decoder output is recognized but not execution-enabled.");
-    return { version: message.version, recentBlockhash: solanaBlockhash(message.lifetimeToken), signerCount: message.header.numSignerAccounts };
+    return {
+      version: message.version,
+      recentBlockhash: solanaBlockhash(message.lifetimeToken),
+      signerCount: message.header.numSignerAccounts,
+      ...(message.version === 0 && message.addressTableLookups
+        ? {
+            addressTableLookups: message.addressTableLookups.map((lookup) => ({
+              table: lookup.lookupTableAddress,
+              writableIndexes: [...lookup.writableIndexes],
+              readonlyIndexes: [...lookup.readonlyIndexes],
+            })),
+          }
+        : {}),
+    };
   };
 
   const signingInspector: SolanaSigningInspector = (serializedTransaction): SolanaSigningInspection => {
