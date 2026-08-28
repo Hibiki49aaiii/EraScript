@@ -34,6 +34,55 @@ export const EthereumMainnetProfile: EvmChainProfile = defineEvmChainProfile({
   },
 });
 
+const rollupCapabilities = {
+  eip1559: "supported",
+  eip2930: "supported",
+  eip4844: "unknown",
+  eip7702: "unknown",
+  erc4337: "unknown",
+  debugTraceCall: "unknown",
+  finalizedTag: "unknown",
+  safeTag: "unknown",
+  privateRpc: "unknown",
+  bundleRpc: "unknown",
+} as const;
+
+export const OptimismMainnetProfile: EvmChainProfile = defineEvmChainProfile({
+  id: "evm.optimism.mainnet",
+  name: "OP Mainnet",
+  family: "evm",
+  network: "mainnet",
+  nativeSymbol: "ETH",
+  chainId: 10,
+  finality: { kind: "evm-rollup", l2Inclusion: true, l1Settlement: "supported" },
+  executionBackends: ["public-rpc", "custom"],
+  capabilities: rollupCapabilities,
+});
+
+export const BaseMainnetProfile: EvmChainProfile = defineEvmChainProfile({
+  id: "evm.base.mainnet",
+  name: "Base Mainnet",
+  family: "evm",
+  network: "mainnet",
+  nativeSymbol: "ETH",
+  chainId: 8453,
+  finality: { kind: "evm-rollup", l2Inclusion: true, l1Settlement: "supported" },
+  executionBackends: ["public-rpc", "custom"],
+  capabilities: rollupCapabilities,
+});
+
+export const ArbitrumOneProfile: EvmChainProfile = defineEvmChainProfile({
+  id: "evm.arbitrum.one",
+  name: "Arbitrum One",
+  family: "evm",
+  network: "mainnet",
+  nativeSymbol: "ETH",
+  chainId: 42161,
+  finality: { kind: "evm-rollup", l2Inclusion: true, l1Settlement: "supported" },
+  executionBackends: ["public-rpc", "custom"],
+  capabilities: rollupCapabilities,
+});
+
 export const SolanaMainnetProfile: SolanaChainProfile = defineSolanaChainProfile({
   id: "solana.mainnet-beta",
   name: "Solana Mainnet Beta",
