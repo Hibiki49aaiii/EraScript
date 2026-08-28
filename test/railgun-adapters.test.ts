@@ -74,6 +74,37 @@ test("RAILGUN Wallet SDK adapter binds gas, proof, and populated transaction", a
   assert.equal(populated.transaction.serializedTransaction, "0x1234");
 });
 
+test("RAILGUN Broadcaster adapter accepts current nested SelectedBroadcaster tokenFee shape", async () => {
+  const selection = await selectRailgunBroadcaster({
+    client: {
+      findBestBroadcaster(_chain: unknown, tokenAddress: string, useRelayAdapt: boolean) {
+        assert.equal(tokenAddress, TOKEN);
+        assert.equal(useRelayAdapt, false);
+        return {
+          railgunAddress: RAILGUN_ADDRESS,
+          tokenAddress: TOKEN,
+          tokenFee: {
+            feePerUnitGas: "2",
+            expiration: 10_000,
+            feesID: "nested-fee-1",
+            availableWallets: 3,
+            relayAdapt: "false",
+            reliability: 1,
+          },
+        };
+      },
+    },
+    sdkChain: "Ethereum",
+    feeToken: TOKEN,
+    validateRailgunAddress: () => true,
+    nowMs: 1_000,
+  });
+
+  assert.equal(selection.feesId, "nested-fee-1");
+  assert.equal(selection.feePerUnitGas, 2n);
+  assert.equal(selection.feeToken, TOKEN);
+});
+
 test("RAILGUN Broadcaster adapter refuses selection mutation and submits bound proof", async () => {
   const sdk = {
     async gasEstimateForUnprovenTransfer() { return 100_000n; },
