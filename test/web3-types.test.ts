@@ -49,7 +49,7 @@ test("addresses are validated and chain-branded", () => {
 
 test("invalid mixed-case checksums become structured Era diagnostics", () => {
   assert.throws(
-    () => address("0x000000000000000000000000000000000000dEaD", Ethereum),
+    () => address("0x52908400098527886E0F7030069857D2E4169Ee7", Ethereum),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES3102",
   );
 });
