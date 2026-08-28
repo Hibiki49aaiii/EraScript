@@ -73,11 +73,17 @@ Current primitives/adapters include:
 - recent blockhash + `lastValidBlockHeight`
 - legacy/v0 serialized transactions
 - `@solana/kit`-compatible structural RPC adapter
-- signature-verified simulation
+- pre-sign simulation separated from signature-verified execution simulation
+- exact message/multi-signer/fee-payer binding
+- post-signature wire-transaction reinspection
+- durable nonce account/authority/fee-snapshot evidence
+- durable nonce revalidation immediately before simulation/submission
+- Address Lookup Table (ALT) resolution/warm-up/deactivation evidence
+- ALT evidence bound into signer context and re-read before execution
 - submission/status/finality evidence
 - Jito bundle adapter
 
-A blockhash is checked before simulation and again before submission. A transaction signature is not success; finality requires a successful status at `finalized` commitment.
+Recent-blockhash transactions are checked for `lastValidBlockHeight` before simulation and submission. Durable-nonce transactions instead re-read the nonce account before both gates. A transaction signature is not success; finality requires a successful status at `finalized` commitment.
 
 ### Jito
 
@@ -104,6 +110,8 @@ Current primitives/adapters include:
 - `SuiTransactionDigest`
 - `Mist`
 - sender/gas-owner binding
+- exact-byte sender/sponsor signature binding
+- sponsored execution helper that only uses Evidence-bound signatures
 - `@mysten/sui` v2 Core-API-compatible structural adapter
 - checks-enabled simulation
 - `Transaction` vs `FailedTransaction` discrimination
@@ -128,7 +136,7 @@ PrivateIntent
   -> PrivateStateVerified
 ```
 
-Current adapters cover the Wallet SDK gas/proof/populate lifecycle and Waku Broadcaster selection/submission. Proof evidence is bound to transfer details, gas, selected Broadcaster/fees ID, fee token/amount/recipient, and quote expiry.
+Current adapters cover the Wallet SDK gas/proof/populate lifecycle, Waku Broadcaster selection/submission, and proof-bound before/after private-balance evidence. Proof evidence is bound to transfer details, gas, selected Broadcaster/fees ID, fee token/amount/recipient, and quote expiry.
 
 A proof tied to an expired quote is rejected. A proof generated for one Broadcaster/fees ID cannot silently be submitted through another.
 
@@ -324,11 +332,13 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] family-aware external signing envelope
 - [x] family-neutral verification report
 - [x] `era verify` multichain report support
-- [ ] Solana unsigned-message/multi-signer signature injection verifier
-- [ ] Solana durable nonce + ALT lifecycle evidence
-- [ ] Sui sponsored-transaction policy/signature-role verifier
-- [ ] automatic RAILGUN private-state reader/indexer evidence
-- [ ] rollup L2 inclusion -> L1 settlement adapters
+- [x] Solana unsigned-message/multi-signer binding + final-wire reinspection
+- [x] Solana durable nonce + ALT lifecycle evidence
+- [x] Sui sponsored-transaction exact-byte/signature-role verifier
+- [x] RAILGUN private-state reader/evidence interface
+- [x] rollup L2 inclusion -> L1 settlement evidence (OP Stack + Arbitrum abstractions)
+- [ ] built-in Solana/Sui family cryptographic signature verifiers
+- [ ] direct RAILGUN Wallet SDK private-balance bridge
 - [ ] real-network SDK integration test matrix
 
 ## Design documents
@@ -345,4 +355,4 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
 
-The current environment has not yet produced a full dependency-backed CI pass for the entire v0.6 tree, so v0.6 remains experimental until the real SDK integration matrix is green.
+The v0.6 core tree has a dependency-backed GitHub Actions pass on Node 22 (`npm install` -> TypeScript build -> full test suite) at commit `e2c1a67616219dca2395875748e839cde4c55d60`. v0.6 remains experimental until the real-network SDK integration matrix and family-specific cryptographic verifier bridges are also green.
