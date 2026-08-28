@@ -61,16 +61,13 @@ async function main(): Promise<void> {
     assert.equal(WakuBroadcasterClient.isStarted(), true);
     assert.ok(WakuBroadcasterClient.getContentTopics().length >= 2);
 
-    const rawSelected = await waitForBroadcaster(WakuBroadcasterClient);
+    await waitForBroadcaster(WakuBroadcasterClient);
     const selection = await selectRailgunBroadcaster({
-      client: {
-        async findBestBroadcaster() {
-          return rawSelected;
-        },
-      },
+      client: WakuBroadcasterClient,
       sdkChain: ETHEREUM,
       feeToken: DAI,
       validateRailgunAddress,
+      useRelayAdapt: false,
     });
 
     assert.equal(selection.feeToken, DAI);
