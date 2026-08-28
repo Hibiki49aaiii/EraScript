@@ -146,6 +146,14 @@ export async function createSolanaSigningPlan(
   try { inspection = await inspector(base64Bytes(transaction.serializedBase64)); }
   catch (error) { return fail("ES4582", "SolanaSigningInspectionFailed", "Failed to derive the Solana signing payload/signer set from serialized transaction bytes.", { cause: error instanceof Error ? error.message : String(error) }); }
   const signingPayloadBase64 = canonicalBase64(inspection.signingPayloadBase64);
+  const payloadHash = sha256(`solana-signing-payload:${signingPayloadBase64}`);
+  if (transaction.lifetimeKind === "durable-nonce" && transaction.durableNonce.signingPayloadHash !== payloadHash) {
+    fail("ES4711", "SolanaDurableNonceSigningPayloadMismatch", "Durable nonce evidence was verified against different Solana message bytes.", {
+      expectedPayloadHash: transaction.durableNonce.signingPayloadHash,
+      actualPayloadHash: payloadHash,
+      nonceAccount: transaction.durableNonce.account.nonceAccount,
+    });
+  }
   if (inspection.requiredSigners.length === 0) fail("ES4583", "MissingSolanaRequiredSigners", "Solana signing plan must contain at least one required signer.");
   const requiredSigners = inspection.requiredSigners.map(solanaAddress);
   if (new Set(requiredSigners).size !== requiredSigners.length) fail("ES4584", "DuplicateSolanaRequiredSigner", "Solana signing plan contains duplicate required signer addresses.");
@@ -189,7 +197,7 @@ export async function createSolanaSigningPlan(
     profileId: profile.id,
     transactionBindingHash: transaction.bindingHash,
     signingPayloadBase64,
-    payloadHash: sha256(`solana-signing-payload:${signingPayloadBase64}`),
+    payloadHash,
     feePayer,
     requiredSigners,
     evidenceBindings: normalizedBindings,
