@@ -72,6 +72,8 @@ async function main(): Promise<void> {
 
     assert.equal(selection.feeToken, DAI);
     assert.equal(validateRailgunAddress(selection.railgunAddress), true);
+    assert.notEqual(selection.feePerUnitGas, undefined);
+    assert.ok(selection.feePerUnitGas! >= 0n);
 
     const peerCounts = {
       mesh: WakuBroadcasterClient.getMeshPeerCount(),
