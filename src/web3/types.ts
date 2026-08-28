@@ -1,4 +1,4 @@
-import { getAddress, type Hex } from "viem";
+import { getAddress, isAddress, type Hex } from "viem";
 import { EraDiagnosticError } from "../diagnostics.js";
 
 declare const eraBrand: unique symbol;
@@ -58,6 +58,19 @@ export function address<C extends EvmChain>(value: string, chain: C, path?: stri
       path,
       digits.length === 39 ? "A leading zero may be missing." : "Provide a complete 0x-prefixed EVM address.",
       { chain: chain.name, expectedHexDigits: 40, actualHexDigits: digits.length },
+    );
+  }
+
+  const body = value.slice(2);
+  const mixedCase = /[a-f]/.test(body) && /[A-F]/.test(body);
+  if (mixedCase && !isAddress(value, { strict: true })) {
+    invalidHex(
+      "ES3102",
+      "InvalidAddressChecksum",
+      "The address has valid length but an invalid mixed-case EVM checksum.",
+      path,
+      "Verify the source address or provide an all-lowercase/all-uppercase address for canonical checksumming.",
+      { chain: chain.name },
     );
   }
 
