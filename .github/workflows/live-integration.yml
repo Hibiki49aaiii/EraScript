@@ -2,6 +2,11 @@ name: Live Network Integration
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "test/live/**"
+      - ".github/workflows/live-integration.yml"
   schedule:
     - cron: "17 3 * * *"
 
