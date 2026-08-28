@@ -255,7 +255,7 @@ test("Arbitrum SDK bridge re-verifies canonical L1 hash and finalized head indep
       targetL2BlockNumber: 400n,
       targetL2BlockHash: ARB_L2_BLOCK_HASH,
     }),
-    (error: unknown) => error instanceof Error && "diagnostic" in error && (error as { diagnostic: { code: string } }).diagnostic.code === "ES4687",
+    (error: unknown) => error instanceof Error && "diagnostic" in error && (error as { diagnostic: { code: string } }).diagnostic.code === "ES4727",
   );
 });
 
