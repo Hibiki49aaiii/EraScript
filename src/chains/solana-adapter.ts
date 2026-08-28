@@ -194,7 +194,14 @@ export function prepareSolanaSerializedTransaction(input: { profile: SolanaChain
 }
 
 export function prepareSolanaDurableNonceSerializedTransaction(input: { profile: SolanaChainProfile; serializedBase64: string; version?: SolanaTransactionVersion; durableNonce: SolanaDurableNonceBindingEvidence }): SolanaDurableNoncePreparedTransaction {
-  base64Bytes(input.serializedBase64);
+  const serializedBytes = base64Bytes(input.serializedBase64);
+  const transactionHash = `0x${createHash("sha256").update(serializedBytes).digest("hex")}`;
+  if (transactionHash !== input.durableNonce.transactionHash) {
+    fail("ES4711", "SolanaDurableNonceTransactionBindingMismatch", "Durable nonce evidence was verified against different serialized transaction bytes.", {
+      expectedTransactionHash: input.durableNonce.transactionHash,
+      actualTransactionHash: transactionHash,
+    });
+  }
   const version = input.version ?? 0;
   if (version !== "legacy" && version !== 0) fail("ES4464", "UnsupportedSolanaTransactionVersion", "EraScript currently supports Solana legacy and v0 transactions in the v0.6 adapter.", { version: String(version) });
   return {
