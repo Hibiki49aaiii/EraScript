@@ -51,7 +51,7 @@ function fail(code: string, kind: string, message: string, details?: Record<stri
 
 function validHash(value: string, field: string): void {
   if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
-    fail("ES4680", "InvalidArbitrumSdkBridgeHash", `${field} must be a 32-byte EVM hash.`, {
+    fail("ES4720", "InvalidArbitrumSdkBridgeHash", `${field} must be a 32-byte EVM hash.`, {
       field,
       value,
     });
@@ -63,7 +63,7 @@ function requireBlock(
   label: string,
 ): { readonly number: bigint; readonly hash: `0x${string}` } {
   if (typeof value.number !== "bigint" || value.number < 0n || typeof value.hash !== "string") {
-    fail("ES4681", "IncompleteArbitrumParentBlockEvidence", `${label} is missing canonical block number/hash evidence.`);
+    fail("ES4721", "IncompleteArbitrumParentBlockEvidence", `${label} is missing canonical block number/hash evidence.`);
   }
   validHash(value.hash, `${label}.hash`);
   return { number: value.number, hash: value.hash };
@@ -83,12 +83,12 @@ export function createArbitrumSdkConfirmedAssertionReader<C extends EvmChain>(in
   readonly l1Client: ArbitrumParentChainClientLike;
 }): ArbitrumConfirmedAssertionReader<C> {
   if (input.profile.finality.kind !== "evm-rollup") {
-    fail("ES4682", "ArbitrumSdkBridgeProfileNotRollup", "Arbitrum SDK bridge requires an evm-rollup profile.", {
+    fail("ES4722", "ArbitrumSdkBridgeProfileNotRollup", "Arbitrum SDK bridge requires an evm-rollup profile.", {
       profile: input.profile.id,
     });
   }
   if (input.source.profileId !== input.profile.id) {
-    fail("ES4683", "ArbitrumSdkBridgeProfileMismatch", "Arbitrum SDK source is configured for a different profile.", {
+    fail("ES4723", "ArbitrumSdkBridgeProfileMismatch", "Arbitrum SDK source is configured for a different profile.", {
       sourceProfile: input.source.profileId,
       profile: input.profile.id,
     });
@@ -105,10 +105,10 @@ export function createArbitrumSdkConfirmedAssertionReader<C extends EvmChain>(in
       });
 
       if (!observed.assertionId) {
-        fail("ES4684", "MissingArbitrumSdkAssertionId", "Arbitrum SDK confirmed assertion is missing an assertion identifier.");
+        fail("ES4724", "MissingArbitrumSdkAssertionId", "Arbitrum SDK confirmed assertion is missing an assertion identifier.");
       }
       if (observed.childBlockNumber < 0n || observed.assertionL1BlockNumber < 0n) {
-        fail("ES4685", "InvalidArbitrumSdkAssertionBlock", "Arbitrum SDK assertion block numbers must be non-negative.");
+        fail("ES4725", "InvalidArbitrumSdkAssertionBlock", "Arbitrum SDK assertion block numbers must be non-negative.");
       }
       validHash(observed.childBlockHash, "childBlockHash");
       if (observed.assertionL1BlockHash) validHash(observed.assertionL1BlockHash, "assertionL1BlockHash");
@@ -119,7 +119,7 @@ export function createArbitrumSdkConfirmedAssertionReader<C extends EvmChain>(in
         "assertionL1Block",
       );
       if (canonical.number !== observed.assertionL1BlockNumber) {
-        fail("ES4686", "ArbitrumParentBlockNumberMismatch", "Parent-chain RPC returned a different block number for the assertion anchor.", {
+        fail("ES4726", "ArbitrumParentBlockNumberMismatch", "Parent-chain RPC returned a different block number for the assertion anchor.", {
           expected: observed.assertionL1BlockNumber.toString(),
           actual: canonical.number.toString(),
         });
@@ -128,7 +128,7 @@ export function createArbitrumSdkConfirmedAssertionReader<C extends EvmChain>(in
         observed.assertionL1BlockHash
         && canonical.hash.toLowerCase() !== observed.assertionL1BlockHash.toLowerCase()
       ) {
-        fail("ES4687", "ArbitrumParentBlockHashMismatch", "SDK assertion anchor is not canonical on the current parent-chain RPC.", {
+        fail("ES4727", "ArbitrumParentBlockHashMismatch", "SDK assertion anchor is not canonical on the current parent-chain RPC.", {
           sdkBlockHash: observed.assertionL1BlockHash,
           canonicalBlockHash: canonical.hash,
           blockNumber: canonical.number.toString(),
