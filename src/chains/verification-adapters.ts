@@ -76,8 +76,28 @@ export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmC
 }
 
 export function solanaSubmissionVerificationReport(profile: SolanaChainProfile, submitted: SolanaSubmittedTransaction, status?: SolanaSignatureStatusEvidence): MultichainVerificationReport {
+  const lifetimeCheck: MultichainVerificationCheck = submitted.simulation.transaction.lifetimeKind === "recent-blockhash"
+    ? {
+        id: "solana.blockhash",
+        status: "pass",
+        message: "Transaction was submitted before its last valid block height.",
+        details: {
+          submittedAtBlockHeight: submitted.submittedAtBlockHeight.toString(),
+          lastValidBlockHeight: submitted.simulation.transaction.recentBlockhash.lastValidBlockHeight.toString(),
+        },
+      }
+    : {
+        id: "solana.durable-nonce",
+        status: "pass",
+        message: "Durable nonce account was bound into the signed transaction and revalidated by the execution gate.",
+        details: {
+          nonceAccount: submitted.simulation.transaction.durableNonce.account.nonceAccount,
+          nonce: submitted.simulation.transaction.durableNonce.account.nonce,
+          bindingHash: submitted.simulation.transaction.durableNonce.bindingHash,
+        },
+      };
   const checks: MultichainVerificationCheck[] = [
-    { id: "solana.blockhash", status: "pass", message: "Transaction was submitted before its last valid block height.", details: { submittedAtBlockHeight: submitted.submittedAtBlockHeight.toString(), lastValidBlockHeight: submitted.simulation.transaction.recentBlockhash.lastValidBlockHeight.toString() } },
+    lifetimeCheck,
     { id: "solana.simulation", status: submitted.simulation.success ? "pass" : "fail", message: submitted.simulation.success ? "Signature-verified Solana simulation succeeded." : "Solana simulation failed." },
   ];
   if (!status || !status.found) checks.push({ id: "solana.execution", status: "warning", message: "Transaction signature has not yet been observed in RPC history." });
