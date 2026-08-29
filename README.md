@@ -18,8 +18,10 @@ Design/implementation documents:
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
 - [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
 - [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
-- [`docs/V06_COMPLETION_CRITERIA.md`](docs/V06_COMPLETION_CRITERIA.md)
+- [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
+- [`docs/V06_COMPLETION_CRITERIA.md`](docs/V06_COMPLETION_CRITERIA.md)
+- [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -77,6 +79,8 @@ provider-specific candidate = provider A
 ```
 
 `buildEvmConformanceMatrix()` is deliberately fail-closed: only unanimous support produces matrix-level `supported`. Supported+unknown stays `unknown`; supported+unsupported becomes `conflict`. Provider IDs are non-secret labels rather than endpoint URLs.
+
+v0.8 binds that provider evidence to actual execution. High-assurance EVM code uses `discoverEvmExecutionProvider()` and carries one deterministic provider binding through preparation, block-anchored simulation, signing, and broadcast. A transaction simulated through provider A cannot be broadcast through provider B by the provider-bound API. Explicit failover invalidates the old simulation/signature, requires provider B to preserve the original capability requirements with equally fresh-or-newer evidence, then forces resimulation and re-signing.
 
 ### Solana
 
@@ -374,6 +378,19 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] real viem chain fixtures: Ethereum / BSC / Polygon / Avalanche / Gnosis
 - [x] final Core CI evidence / Issue #2 closure
 
+### v0.8 — provider-bound EVM execution
+- [x] deterministic provider execution binding
+- [x] exact viem client + fresh provider evidence binding
+- [x] provider-bound prepare/simulate/sign/broadcast wrapper
+- [x] block-anchored simulation with exact provider identity
+- [x] provider substitution rejection
+- [x] explicit reroute invalidates simulation/signature
+- [x] reroute requires fresh-or-newer provider evidence
+- [x] reroute cannot weaken original capability requirements
+- [x] v0.7 conformance-matrix route validation
+- [x] provider URL/credential non-persistence retained
+- [x] final Core CI evidence / Issue #3 closure
+
 ## Design documents
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
@@ -396,3 +413,9 @@ EraScript v0.6 is implementation-complete but remains experimental software. The
 EraScript v0.7.0 adds provider-scoped EVM conformance evidence and a deterministic multi-provider capability matrix. The final code/version baseline is commit `8f9a4b435697be71d23ed855c89fc97d4cf629f0`. Core CI run 316 passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **144/144 tests passed and 0 failures**.
 
 The matrix remains deliberately conservative: only unanimous provider support becomes matrix-level `supported`; provider disagreement becomes `conflict`; partial evidence remains `unknown`. Individual providers that prove a requested capability may still be selected explicitly without upgrading chain-global/provider-global conformance.
+
+### v0.8 status
+
+EraScript v0.8.0 closes the provider-substitution/TOCTOU gap between v0.7 capability evidence and EVM execution. The final code/version baseline is commit `7da58eb253d422c676e5df0d9c31258f5b0134a1`. Core CI run 327 passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **152/152 tests passed and 0 failures**.
+
+The provider-bound route is additive: existing low-level viem/RPC APIs remain compatible, while AI-generated/high-assurance code can require exact provider continuity. Explicit failover returns to prepared state, discards stale simulation/signature evidence, preserves the original capability requirement set, requires fresh-or-newer evidence from the replacement provider, and then requires resimulation and re-signing.
