@@ -1,6 +1,6 @@
 # EraScript v0.13 — Emitted JavaScript Source Maps
 
-Status: implementation complete; final release CI pending
+Status: implementation complete
 
 Issue: #9
 
@@ -147,3 +147,21 @@ v0.13 intentionally does not implement:
 - new language grammar.
 
 These are follow-on consumers of the v0.12/v0.13 source-location foundation.
+
+
+## Final release verification
+
+```text
+version: 0.13.0
+implementation commit: fbcca7bd620400b61f5a177510480c1a58f1cf86
+Core CI run: 401
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 204
+pass: 204
+fail: 0
+```
+
+Issue #9 Post-Implementation Review:
+`docs/ai/issues/9/POST_IMPLEMENTATION_REVIEW.md`.
