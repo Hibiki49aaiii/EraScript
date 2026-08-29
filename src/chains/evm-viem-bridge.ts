@@ -9,6 +9,7 @@ import type {
 } from "./types.js";
 
 export interface ViemChainLike {
+  readonly [key: string]: unknown;
   readonly id: number;
   readonly name: string;
   readonly nativeCurrency?: {
