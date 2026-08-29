@@ -17,11 +17,10 @@ Design/implementation documents:
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
 - [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
-- [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
-- [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
-- [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V06_COMPLETION_CRITERIA.md`](docs/V06_COMPLETION_CRITERIA.md)
+- [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
+- [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -81,6 +80,8 @@ provider-specific candidate = provider A
 `buildEvmConformanceMatrix()` is deliberately fail-closed: only unanimous support produces matrix-level `supported`. Supported+unknown stays `unknown`; supported+unsupported becomes `conflict`. Provider IDs are non-secret labels rather than endpoint URLs.
 
 v0.8 binds that provider evidence to actual execution. High-assurance EVM code uses `discoverEvmExecutionProvider()` and carries one deterministic provider binding through preparation, block-anchored simulation, signing, and broadcast. A transaction simulated through provider A cannot be broadcast through provider B by the provider-bound API. Explicit failover invalidates the old simulation/signature, requires provider B to preserve the original capability requirements with equally fresh-or-newer evidence, then forces resimulation and re-signing.
+
+v0.9 extends the same trust model **after broadcast**. `observeEvmExecutionWithProvider()` can independently collect receipt/canonicality/confirmation/finality evidence from multiple provider-bound clients, and `buildEvmExecutionQuorum()` passes only when every configured verifier agrees and meets the requested threshold. There is no implicit majority vote. For rollups the quorum is explicitly `l2-execution`; OP Stack/Arbitrum L1 settlement evidence is still required separately.
 
 ### Solana
 
@@ -390,6 +391,21 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] v0.7 conformance-matrix route validation
 - [x] provider URL/credential non-persistence retained
 - [x] final Core CI evidence / Issue #3 closure
+
+### v0.9 — multi-provider EVM execution quorum
+- [x] provider-bound receipt/canonicality observation
+- [x] strict unanimous quorum; no majority fallback
+- [x] minimum distinct provider-ID gate
+- [x] deterministic provider-order-independent quorum hash
+- [x] independent canonical receipt verification
+- [x] confirmation threshold required from every verifier
+- [x] finalizedTag/finalized-head gate for every verifier
+- [x] Included/Confirmed/Finalized promotion
+- [x] rollup quorum explicitly scoped to L2 execution only
+- [x] provider error/endpoint secret non-persistence
+- [x] observation/quorum tamper detection
+- [x] deterministic regression suite / Issue #4
+- [ ] final v0.9.0 Core CI evidence / Issue #4 closure
 
 ## Design documents
 
