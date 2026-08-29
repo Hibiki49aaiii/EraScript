@@ -211,13 +211,32 @@ function returnArrowNode(
   };
 }
 
+function mutableDeclarationPrefix(
+  source: string,
+  tokens: readonly EraToken[],
+  index: number,
+): boolean {
+  const previous = previousIndex(tokens, index);
+  if (previous === undefined) return true;
+
+  const token = tokens[previous]!;
+  if (token.kind === "template-expression-start") return true;
+  if (new Set(["{", "}", ";", "(", ",", ":"]).has(token.text)) return true;
+
+  return /[\r\n]/.test(source.slice(token.end, tokens[index]!.start));
+}
+
 function parseMutableBindingAt(
   source: string,
   tokens: readonly EraToken[],
   index: number,
 ): EraMutableBindingNode | undefined {
   const token = tokens[index]!;
-  if (!isIdentifier(token, "mut") || isMemberAccess(tokens, index)) return undefined;
+  if (
+    !isIdentifier(token, "mut") ||
+    isMemberAccess(tokens, index) ||
+    !mutableDeclarationPrefix(source, tokens, index)
+  ) return undefined;
 
   const bindingIndex = nextIndex(tokens, index);
   if (bindingIndex === undefined) return undefined;
