@@ -183,6 +183,7 @@ High-risk irreversible actions stop before execution and require user confirmati
 - `docs/ai/issues/1/HUMAN_UNDERSTANDING.md`
 
 ### Existing
+- `.github/workflows/ci.yml` — run `npm run check` explicitly before deterministic tests
 - GitHub Issue #1 body/checklist/result
 
 ### No runtime changes
@@ -230,9 +231,9 @@ Routine read-only GitHub inspection, reversible documentation, tests, branches a
 
 Because runtime behavior is intentionally unchanged:
 
-1. `npm run check`
-2. `npm run test:core`
-3. GitHub Core CI for the implementation commit
+1. Core CI executes `npm run check` explicitly
+2. Core CI executes `npm run test:core`
+3. GitHub Core CI result is inspected for the implementation commit
 4. Manual consistency checks:
    - Issue Base SHA == Plan Base SHA
    - AGENTS workflow matches Issue requirements
@@ -247,10 +248,10 @@ No dedicated lint/formatter exists at Base Revision; introducing one is out of s
 2. Persist Decisions
 3. Persist Human Understanding Summary
 4. Implement root `AGENTS.md`
-5. Review actual changed files against Issue scope
-6. Run `npm run check`
-7. Run `npm run test:core`
-8. Confirm GitHub Core CI
+5. Add explicit `npm run check` step to Core CI
+6. Review actual changed files against Issue scope
+7. Confirm Core CI executes `npm run check`
+8. Confirm Core CI executes `npm run test:core`
 9. Perform Post-Implementation Review
 10. Update Issue #1 with final checklist/results
 
@@ -348,3 +349,17 @@ Triage:
 Pre-Implementation Review: **PASS**
 
 No blocker requires user confirmation. The selected changes are documentation-only, reversible, non-destructive, and within Issue #1 scope.
+
+
+## 17. Plan Adjustment Before Implementation
+
+Pre-Implementation Review found that the Issue requires an actual `npm run check` result. The existing Core CI only runs `npm run test:core`, whose build step type-checks with emit but does not execute the repository's explicit no-emit check script.
+
+Decision: add `npm run check` as a separate Core CI step before `npm run test:core`.
+
+Why:
+- avoids claiming an unexecuted verification step,
+- uses an existing repository script,
+- adds no dependency,
+- changes no runtime/API behavior,
+- is safe and reversible.
