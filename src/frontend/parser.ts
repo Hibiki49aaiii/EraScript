@@ -109,6 +109,53 @@ function nearestUnmatchedOpener(
   return undefined;
 }
 
+const expressionPrefixIdentifiers = new Set([
+  "return",
+  "throw",
+  "yield",
+  "await",
+  "case",
+  "default",
+  "new",
+  "void",
+  "typeof",
+  "delete",
+  "instanceof",
+  "in",
+  "of",
+]);
+
+const expressionPrefixPunctuation = new Set([
+  "=",
+  "(",
+  "[",
+  ":",
+  "?",
+  "=>",
+  "!",
+  "~",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "**",
+  "&&",
+  "||",
+  "??",
+  "&",
+  "|",
+  "^",
+  "==",
+  "===",
+  "!=",
+  "!==",
+  "<",
+  ">",
+  "<=",
+  ">=",
+]);
+
 function anonymousExpressionPrefix(tokens: readonly EraToken[], fnIndex: number): boolean {
   let previous = previousIndex(tokens, fnIndex);
   if (previous === undefined) return false;
@@ -121,7 +168,7 @@ function anonymousExpressionPrefix(tokens: readonly EraToken[], fnIndex: number)
   const token = tokens[previous]!;
   if (token.kind === "template-expression-start") return true;
   if (token.kind === "identifier") {
-    return new Set(["return", "throw", "yield", "await", "case", "default"]).has(token.text);
+    return expressionPrefixIdentifiers.has(token.text);
   }
 
   if (token.text === ",") {
@@ -129,7 +176,7 @@ function anonymousExpressionPrefix(tokens: readonly EraToken[], fnIndex: number)
     return opener === "(" || opener === "[";
   }
 
-  return new Set(["=", "(", "[", ":", "?", "=>"]).has(token.text);
+  return expressionPrefixPunctuation.has(token.text);
 }
 
 function namedFunctionPrefix(
@@ -148,19 +195,15 @@ function namedFunctionPrefix(
   const token = tokens[previous]!;
   if (token.kind === "template-expression-start") return true;
   if (token.kind === "identifier") {
-    return new Set([
-      "pub",
-      "export",
-      "default",
-      "return",
-      "throw",
-      "yield",
-      "await",
-      "case",
-    ]).has(token.text);
+    return token.text === "pub" ||
+      token.text === "export" ||
+      expressionPrefixIdentifiers.has(token.text);
   }
 
-  if (new Set(["{", "}", ";", "=", "(", "[", ":", "?", "=>"]).has(token.text)) {
+  if (
+    new Set(["{", "}", ";"]).has(token.text) ||
+    expressionPrefixPunctuation.has(token.text)
+  ) {
     return true;
   }
 
