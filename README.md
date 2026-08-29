@@ -468,7 +468,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] ordinary TypeScript identity mapping
 - [x] CLI `era build -o` sourceMappingURL/map filename consistency
 - [x] pre-release Core CI run 397: 203/203 passed
-- [ ] final v0.13.0 Core CI evidence / Issue #9 closure
+- [x] final v0.13.0 Core CI evidence / Issue #9 closure
 
 ## Design documents
 
@@ -484,6 +484,8 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 
 ## Status
+
+EraScript v0.13.0 emitted-source-map baseline is verified at implementation commit `fbcca7bd620400b61f5a177510480c1a58f1cf86`. Core CI run **401** passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **204/204 tests passed and 0 failures**. Issue #9 composes TypeScript emitter JS→lowered-TS Source Map V3 mappings through the v0.12 coordinate map so generated JavaScript maps to original `.era` line/column coordinates and embeds the original EraScript in `sourcesContent`. CLI `era build -o` also aligns map `file` and `sourceMappingURL` with the actual output filename. Runtime stack-trace/debugger remapping remains intentionally outside v0.13 scope.
 
 EraScript v0.12.0 original-source diagnostic baseline is verified at commit `b8c63e0ec0867a6d7870d2df6ebacdc684cd073d`. Core CI run **392** passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **197/197 tests passed and 0 failures**. Issue #8 closes transformed-coordinate drift by deriving one UTF-16 source-coordinate map from the exact frontend edits and using it for TypeScript diagnostics, Web3 diagnostics, unsafe audit IDs, and `era check --json`. During v0.12 development, read-only Live Network Integration run **9** also passed Solana RPC, Sui Core API, Jito, and RAILGUN/Waku regression smoke checks. Generated JavaScript sourcemap/debugger composition remains intentionally outside v0.12 scope.
 
