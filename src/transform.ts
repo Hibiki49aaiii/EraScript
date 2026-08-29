@@ -1,7 +1,4 @@
-import { applySourceEdits } from "./frontend/apply-edits.js";
-import { lowerSurfaceNode } from "./frontend/ast.js";
-import { lexEraScript } from "./frontend/lexer.js";
-import { parseEraSurface } from "./frontend/parser.js";
+import { transformEraScriptDetailed } from "./frontend/transform.js";
 
 export interface TransformResult {
   code: string;
@@ -13,13 +10,11 @@ export interface TransformResult {
  *
  * Ordinary TypeScript is preserved byte-for-byte unless the source contains a
  * construct that the EraScript surface parser recognizes unambiguously.
+ *
+ * The detailed frontend mapping remains internal so the public transform
+ * result keeps the exact v0.1-compatible { code, features } shape.
  */
 export function transformEraScript(source: string): TransformResult {
-  const tokens = lexEraScript(source);
-  const nodes = parseEraSurface(source, tokens);
-  const edits = nodes.map(lowerSurfaceNode);
-  const code = applySourceEdits(source, edits);
-  const features = [...new Set(edits.map((edit) => edit.feature))].sort();
-
-  return { code, features };
+  const transformed = transformEraScriptDetailed(source);
+  return { code: transformed.code, features: transformed.features };
 }
