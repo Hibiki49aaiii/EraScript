@@ -1,6 +1,6 @@
 # EraScript v0.14 — Runtime Stack Trace Remapping
 
-Status: implementation complete; verification pending
+Status: implementation complete; verification complete
 
 Issue: #10
 
@@ -82,4 +82,29 @@ v0.14 does not implement:
 
 ## Verification
 
-Final `npm run check`, `npm run test:core`, and Core CI evidence will be recorded after the implementation baseline is green.
+Verified release baseline:
+
+`0dba932baf25078369aff7cce68e9e3cedf2bc35`
+
+GitHub Actions Core CI:
+
+```text
+Run: 406
+Run ID: 33255938468
+Node: 22.23.2
+Conclusion: success
+
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+TypeScript build: PASS
+tests: 206
+pass: 206
+fail: 0
+```
+
+Post-Implementation Review:
+
+`docs/ai/issues/10/POST_IMPLEMENTATION_REVIEW.md` — **APPROVED**.
+
+CI also reports existing transitive dependency audit findings (67 total: 16 low, 28 moderate, 20 high, 3 critical). v0.14 adds no dependency; remediation is tracked separately from this runtime-stack scope.
