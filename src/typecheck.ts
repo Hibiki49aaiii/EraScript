@@ -1,6 +1,8 @@
 import ts from "typescript";
 import type { EraDiagnostic } from "./diagnostics.js";
-import { transformEraScript } from "./transform.js";
+import { remapTypeScriptDiagnostics } from "./frontend/diagnostics.js";
+import { createOriginalLocationResolver } from "./frontend/source-map.js";
+import { transformEraScriptDetailed } from "./frontend/transform.js";
 import { analyzeWeb3Source } from "./web3/analyze.js";
 import type { UnsafeBoundaryAudit } from "./web3/unsafe.js";
 
@@ -13,7 +15,7 @@ export interface CheckResult {
 }
 
 export function typecheck(source: string, fileName = "module.era"): CheckResult {
-  const transformed = transformEraScript(source);
+  const transformed = transformEraScriptDetailed(source);
   const virtualName = fileName.replace(/\.era$/i, ".ts");
   const options: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
@@ -39,8 +41,22 @@ export function typecheck(source: string, fileName = "module.era"): CheckResult 
   };
 
   const program = ts.createProgram([virtualName], options, host);
-  const diagnostics = ts.getPreEmitDiagnostics(program);
-  const analysis = analyzeWeb3Source(transformed.code, virtualName);
+  const diagnostics = remapTypeScriptDiagnostics(ts.getPreEmitDiagnostics(program), {
+    map: transformed.coordinateMap,
+    originalSource: source,
+    originalFileName: fileName,
+    transformedFileName: virtualName,
+  });
+  const resolveOriginalLocation = createOriginalLocationResolver({
+    map: transformed.coordinateMap,
+    source,
+    fileName,
+  });
+  const analysis = analyzeWeb3Source(
+    transformed.code,
+    virtualName,
+    resolveOriginalLocation,
+  );
 
   return {
     typescript: transformed.code,
