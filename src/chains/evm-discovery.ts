@@ -84,7 +84,11 @@ function choose(discovered: CapabilityStatus, configured: CapabilityStatus): Cap
   return configured;
 }
 
-export async function discoverEvmCapabilities(client: ViemClientLike, profile: EvmChainProfile): Promise<EvmCapabilityEvidence> {
+export async function discoverEvmCapabilities(
+  client: ViemClientLike,
+  profile: EvmChainProfile,
+  options: { readonly observedAtMs?: number } = {},
+): Promise<EvmCapabilityEvidence> {
   if (client.chain && client.chain.id !== profile.chainId) fail("ES4450", "EvmDiscoveryChainMismatch", "EVM capability discovery client is connected to a different chain.", {
     expectedChainId: profile.chainId,
     actualChainId: client.chain.id,
@@ -128,7 +132,7 @@ export async function discoverEvmCapabilities(client: ViemClientLike, profile: E
     kind: "evm-capability-evidence",
     profileId: profile.id,
     chainId: profile.chainId,
-    observedAtMs: Date.now(),
+    observedAtMs: options.observedAtMs ?? Date.now(),
     capabilities,
     probes,
   };
