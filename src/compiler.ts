@@ -1,5 +1,6 @@
 import ts from "typescript";
-import { transformEraScript } from "./transform.js";
+import { remapTypeScriptDiagnostics } from "./frontend/diagnostics.js";
+import { transformEraScriptDetailed } from "./frontend/transform.js";
 
 export interface CompileOptions {
   fileName?: string;
@@ -17,7 +18,7 @@ export interface CompileResult {
 }
 
 export function compile(source: string, options: CompileOptions = {}): CompileResult {
-  const transformed = transformEraScript(source);
+  const transformed = transformEraScriptDetailed(source);
   const fileName = options.fileName ?? "module.era";
   const result = ts.transpileModule(transformed.code, {
     fileName,
@@ -35,7 +36,12 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
     typescript: transformed.code,
     javascript: result.outputText,
     ...(result.sourceMapText ? { sourceMap: result.sourceMapText } : {}),
-    diagnostics: result.diagnostics ?? [],
+    diagnostics: remapTypeScriptDiagnostics(result.diagnostics ?? [], {
+      map: transformed.coordinateMap,
+      originalSource: source,
+      originalFileName: fileName,
+      transformedFileName: fileName,
+    }),
     features: transformed.features,
   };
 }
