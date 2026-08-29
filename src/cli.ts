@@ -147,22 +147,21 @@ function run(file: string, args: string[]): never {
   const source = readSource(file);
   const checked = typecheck(source, file);
   ensureChecked(checked);
+  const result = compile(source, {
+    fileName: file,
+    sourceMap: true,
+    outputFileName: "main.mjs",
+  });
+  if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
+  if (!result.sourceMap) {
+    console.error("EraScript: runtime source map was requested but the compiler did not produce one");
+    process.exit(1);
+  }
+
   const temp = mkdtempSync(join(tmpdir(), "erascript-"));
   const output = join(temp, "main.mjs");
   let status = 1;
   try {
-    const result = compile(source, {
-      fileName: file,
-      sourceMap: true,
-      outputFileName: basename(output),
-    });
-    if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
-    if (!result.sourceMap) {
-      console.error("EraScript: runtime source map was requested but the compiler did not produce one");
-      process.exitCode = 1;
-      return process.exit(1);
-    }
-
     writeFileSync(output, result.javascript, "utf8");
     writeFileSync(`${output}.map`, result.sourceMap, "utf8");
 
@@ -175,7 +174,6 @@ function run(file: string, args: string[]): never {
     );
     if (child.error) {
       console.error(`EraScript: failed to start Node runtime: ${child.error.message}`);
-      status = 1;
     } else {
       status = child.status ?? 1;
     }
