@@ -31,7 +31,6 @@ interface Shape {
 }
 const re = /fn mut -> User\?/
 const text = "fn mut -> value: User?"
-const raw = `fn mut -> value: User?`
 `;
 
   assert.equal(transformEraScript(input).code, input);
