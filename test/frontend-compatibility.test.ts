@@ -82,6 +82,18 @@ test("object methods after commas remain TypeScript while array comma can start 
   assert.match(lowered.code, /\[0, function\(value: number\): number \{ return value \+ 1 \}\]/);
 });
 
+test("valid Era function expressions remain supported across TypeScript expression prefixes", () => {
+  const input = `declare const condition: boolean
+const logical = condition && fn(value: number) -> number { return value }
+const unary = !fn() -> boolean { return false }
+export default fn(value: number) -> number { return value + 1 }
+`;
+  const result = transformEraScript(input);
+  assert.match(result.code, /condition && function\(value: number\): number/);
+  assert.match(result.code, /!function\(\): boolean/);
+  assert.match(result.code, /export default function\(value: number\): number/);
+});
+
 test("template raw text is protected while interpolation bodies are parsed as code", () => {
   const input = "const value = `raw fn mut -> User? :: ${fn(x: number) -> number { return x + 1 }}`";
   const result = transformEraScript(input);
