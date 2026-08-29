@@ -1,6 +1,6 @@
 # EraScript v0.9 — Multi-Provider EVM Execution Quorum
 
-Status: implementation candidate; final release CI pending  
+Status: implementation complete  
 Issue: #4  
 Base Commit SHA: `7d779ffa145ad27fd04fcb26e973e3f76dc9ddbf`
 
@@ -245,19 +245,46 @@ The v0.7/v0.8 suites remain part of the same deterministic Core CI.
 
 ## 12. Verification
 
-Pre-release verification observed during implementation:
+Implementation code baseline:
 
-- `npm run check` reached PASS after quorum test type corrections.
-- Core CI exposed and led to correction of bigint-unsafe test serialization.
-- Evidence integrity regression tests were added after review.
+```text
+commit: 8e20a0b873173723c29fd918397c595952fff87b
+Core CI run: 334
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 162
+pass: 162
+fail: 0
+```
 
-Final release/version baseline remains pending until the final code/version commit has a green Core CI run.
+Final v0.9.0 code/version baseline:
 
-## 13. Remaining release steps
+```text
+EraScript version: 0.9.0
+commit: 6603a9eef3bda0a774e7d9874a2c55405bd04539
+Core CI run: 336
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 162
+pass: 162
+fail: 0
+```
 
-- [ ] Core CI green for final implementation code.
-- [ ] package + CLI version -> `0.9.0`.
-- [ ] final Core CI green for the version baseline.
-- [ ] README v0.9 status.
-- [ ] Issue #4 final Implementation Result / Verification Result.
-- [ ] Issue #4 closure.
+CI findings corrected before release:
+
+1. New quorum test hash literals were initially inferred as plain `string`; they are now explicitly typed as EVM hex strings.
+2. Raw `JSON.stringify()` in two tests could not serialize bigint Evidence fields; tests now use bigint-safe serialization without weakening the assertions.
+3. Post-Implementation Review added observation/quorum hash re-validation and tamper tests before promotion.
+
+## 13. Release result
+
+- [x] Core CI green for final implementation code.
+- [x] package + CLI version -> `0.9.0`.
+- [x] final Core CI green for the version baseline.
+- [x] README v0.9 status.
+- [x] Issue #4 final Implementation Result / Verification Result.
+- [x] Issue #4 closure.
+
+Documentation-only closure commits occur after the code/version baseline and are intentionally excluded from Core CI by repository policy.
