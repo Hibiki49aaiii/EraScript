@@ -2,28 +2,27 @@
 
 Issue: v0.13 — Compose emitted JavaScript source maps back to original EraScript
 
-Status: **CONDITIONAL APPROVAL — final release CI pending**
+Status: **APPROVED**
 
-## Implementation baseline
+## Release baseline
 
 ```text
 version: 0.13.0
-implementation head: fbcca7bd620400b61f5a177510480c1a58f1cf86
-pre-release Core CI run: 397
+implementation commit: fbcca7bd620400b61f5a177510480c1a58f1cf86
+Core CI run: 401
 npm install: PASS
 npm run check: PASS
 npm run test:core: PASS
-pre-release tests: 203
-pre-release pass: 203
-pre-release fail: 0
+tests: 204
+pass: 204
+fail: 0
 ```
 
-The final implementation adds one additional fail-closed source/name-index bounds
-regression after run 397, so the expected final release corpus is 204 tests.
+Pre-release composition/CLI verification also passed Core CI run 397 at 203/203 before the final fail-closed index-bounds regression.
 
 ## Requirements review
 
-PASS, subject to final release CI.
+PASS.
 
 Verified behavior:
 
@@ -132,7 +131,8 @@ Still intentionally outside v0.13:
 
 ## Final decision
 
-Pending Core CI run 401 on the final v0.13.0 implementation baseline.
+**APPROVED.**
 
-When run 401 passes `npm install`, `npm run check`, and `npm run test:core`
-at 204/204, this review becomes **APPROVED** and Issue #9 may be closed.
+Issue #9 requirements are satisfied at EraScript v0.13.0 implementation baseline
+`fbcca7bd620400b61f5a177510480c1a58f1cf86`, with Core CI run 401 green at
+204/204 tests.
