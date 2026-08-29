@@ -100,7 +100,7 @@ function fail(
 
 function providerId(value: string): string {
   if (
-    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(value)
+    !/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(value)
     || /^(?:https?|wss?|ws)$/i.test(value)
   ) {
     fail(
@@ -125,12 +125,21 @@ function observedAt(value: number): number {
   return value;
 }
 
+function sanitizeProbeDetail(value: string): string {
+  return value
+    .replace(/\b(?:https?|wss?):\/\/[^\s)\]}'"]+/gi, "[redacted-url]")
+    .replace(
+      /\b(api[_-]?key|apikey|token|authorization|bearer|secret|password)\s*[:=]\s*[^\s,;]+/gi,
+      (_match, key: string) => `${key}=[redacted]`,
+    );
+}
+
 function normalizeProbe(probe: EvmCapabilityProbe): EvmCapabilityProbe {
   return {
     capability: probe.capability,
     status: probe.status,
     source: probe.source,
-    ...(probe.detail ? { detail: probe.detail } : {}),
+    ...(probe.detail ? { detail: sanitizeProbeDetail(probe.detail) } : {}),
   };
 }
 
