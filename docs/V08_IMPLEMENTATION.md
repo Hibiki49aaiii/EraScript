@@ -1,6 +1,6 @@
 # EraScript v0.8 — Provider-Bound EVM Execution Routing
 
-Status: implementation complete, final release verification pending  
+Status: implementation complete  
 Issue: #3  
 Base Commit SHA: `49113716d4338a75e1041566f20c2864ecf5f6d0`
 
@@ -122,7 +122,8 @@ A reroute target must:
 - use the same profile/chain,
 - have a different binding,
 - have provider evidence at least as recent as the previous route,
-- prove all capabilities required by its own binding.
+- prove all capabilities required by its own binding,
+- preserve every capability requirement from the previous route (reroute cannot downgrade assumptions).
 
 ## 8. Backward compatibility
 
@@ -165,6 +166,7 @@ New regression coverage:
 - explicit reroute invalidates simulation/signature
 - rerouted provider requires resimulation
 - stale reroute evidence rejection
+- reroute capability-downgrade rejection
 - provider-specific capability proof failure
 - conformance matrix membership/routing
 - provider URL/credential-ID rejection inherited from v0.7
@@ -173,14 +175,40 @@ Existing v0.7 conformance tests remain unchanged.
 
 ## 11. Verification
 
-Pending final release baseline:
+Final release baseline:
 
-- [ ] `npm install`
-- [ ] `npm run check`
-- [ ] `npm run test:core`
-- [ ] diagnostic registry green
-- [ ] post-implementation review
-- [ ] package/CLI promoted to 0.8.0
-- [ ] final Core CI run green
+- [x] `npm install`
+- [x] `npm run check`
+- [x] `npm run test:core`
+- [x] diagnostic registry green
+- [x] post-implementation review
+- [x] package/CLI promoted to 0.8.0
+- [x] final Core CI run green
 
-Final run/commit/test counts will be recorded after verification.
+```text
+EraScript version: 0.8.0
+code/version baseline: 7da58eb253d422c676e5df0d9c31258f5b0134a1
+Core CI run: 327
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 152
+pass: 152
+fail: 0
+```
+
+## 12. Post-Implementation Review
+
+The review caught two issues before release:
+
+1. **Runtime nominal-brand bug.** A TypeScript-only `declare const ... unique symbol` was accidentally used as a runtime object key. Core CI run 322 exposed the resulting `ReferenceError`. The brand is now backed by a real private `Symbol()`.
+2. **Failover capability downgrade.** A replacement provider could initially have been bound with a smaller required-capability set. The final implementation requires the new route to preserve every capability required by the previous route; downgrade attempts fail with `ES4751 ProviderExecutionEvidenceMismatch`.
+
+Additional review conclusions:
+
+- generic `tx.ts` / low-level `rpc.ts` remain backward compatible,
+- provider continuity and raw-transaction signature verification remain separate safety responsibilities,
+- no RPC endpoint URL/API credential is persisted by provider execution bindings,
+- successful provider-bound simulation must be concretely block-anchored and identify the exact bound provider,
+- provider reroute evidence must be at least as recent as the prior route,
+- diagnostic-code collision protection remains part of the green suite.
