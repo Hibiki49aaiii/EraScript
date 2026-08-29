@@ -557,6 +557,24 @@ export function rerouteEvmProviderExecution<C extends EvmChain>(
     );
   }
 
+  const missingCapabilities = source.provider.requiredCapabilities.filter(
+    (capability) => !nextProvider.binding.requiredCapabilities.includes(capability),
+  );
+  if (missingCapabilities.length > 0) {
+    fail(
+      "ES4751",
+      "ProviderExecutionEvidenceMismatch",
+      "EVM provider reroute cannot weaken the capability requirements of the existing execution route.",
+      {
+        previousProviderId: source.provider.providerId,
+        nextProviderId: nextProvider.binding.providerId,
+        requiredCapabilities: source.provider.requiredCapabilities,
+        nextRequiredCapabilities: nextProvider.binding.requiredCapabilities,
+        missingCapabilities,
+      },
+    );
+  }
+
   const blockNumber = source.simulated.simulation.blockNumber;
   const blockHash = source.simulated.simulation.blockHash;
   if (blockNumber === undefined || blockHash === undefined) {
