@@ -1,5 +1,7 @@
 name: Live Network Integration
 
+# v0.6 completion smoke: read-only network evidence; never broadcasts transactions.
+
 on:
   workflow_dispatch:
   push:
