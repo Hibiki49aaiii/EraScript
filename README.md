@@ -421,7 +421,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] stable ES4780–ES4800+ diagnostics / registry protection
 - [x] existing single-provider APIs preserved
 - [x] deterministic regression suite / Issue #5
-- [ ] final v0.10.0 Core CI evidence / Issue #5 closure
+- [x] final v0.10.0 Core CI evidence / Issue #5 closure
 
 ## Design documents
 
@@ -497,4 +497,18 @@ diagnostic registry: PASS
 
 Solana and Sui keep family-native quorum semantics; there is no generic cross-family quorum abstraction. Jito remains backend evidence and requires finalized Solana quorum for every exact expected landed signature. RAILGUN remains an EVM privacy overlay and strict recovery requires both matching base-EVM execution quorum and proof-bound private-state assertions.
 
-Final package/CLI `0.10.0` baseline is pending the release-version Core CI run.
+Final release-version baseline:
+
+```text
+commit: 3e3f945b6087736eda6f00ca8766d5cea83a88f2
+Core CI run: 354
+version: 0.10.0
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 171
+pass: 171
+fail: 0
+```
+
+Issue #5 is closed after final requirements/architecture/security/backward-compatibility review. The dedicated review record is `docs/ai/issues/5/POST_IMPLEMENTATION_REVIEW.md`.
