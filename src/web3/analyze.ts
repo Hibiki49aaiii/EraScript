@@ -7,7 +7,11 @@ export interface Web3SourceAnalysis {
   readonly unsafeBoundaries: readonly UnsafeBoundaryAudit[];
 }
 
-export type Web3SourceLocation = Pick<EraDiagnostic, "file" | "line" | "column">;
+export interface Web3SourceLocation {
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+}
 export type Web3SourceLocationResolver = (transformedOffset: number) => Web3SourceLocation;
 type NodeLocationResolver = (node: ts.Node) => Web3SourceLocation;
 
