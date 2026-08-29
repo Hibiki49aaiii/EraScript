@@ -7,6 +7,13 @@ export interface SourceCoordinateSegment {
   readonly kind: "unchanged" | "replacement";
   readonly originalStart: number;
   readonly originalEnd: number;
+  /**
+   * Replacement edits may absorb formatting characters that are not the
+   * semantic source of the generated token. Example: " ->" becomes ":" but
+   * diagnostics for ":" should point at "->", not the preceding space.
+   */
+  readonly originalAnchorStart?: number;
+  readonly originalAnchorEnd?: number;
   readonly transformedStart: number;
   readonly transformedEnd: number;
 }
@@ -86,6 +93,21 @@ export class EraSourceCoordinateMap {
       ) {
         throw new Error("Unchanged source coordinate segments must have equal lengths.");
       }
+      if (
+        segment.originalAnchorStart !== undefined ||
+        segment.originalAnchorEnd !== undefined
+      ) {
+        if (
+          segment.kind !== "replacement" ||
+          segment.originalAnchorStart === undefined ||
+          segment.originalAnchorEnd === undefined ||
+          segment.originalAnchorStart < segment.originalStart ||
+          segment.originalAnchorEnd > segment.originalEnd ||
+          segment.originalAnchorStart >= segment.originalAnchorEnd
+        ) {
+          throw new Error("Replacement source anchors must be a non-empty range inside the original segment.");
+        }
+      }
       previousOriginalEnd = segment.originalEnd;
       previousTransformedEnd = segment.transformedEnd;
     }
@@ -119,7 +141,9 @@ export class EraSourceCoordinateMap {
     if (segment.kind === "unchanged") {
       return segment.originalStart + (offset - segment.transformedStart);
     }
-    return bias === "left" ? segment.originalStart : segment.originalEnd;
+    const anchorStart = segment.originalAnchorStart ?? segment.originalStart;
+    const anchorEnd = segment.originalAnchorEnd ?? segment.originalEnd;
+    return bias === "left" ? anchorStart : anchorEnd;
   }
 
   toTransformed(offset: number, bias: SourceMapBias = "left"): number {
@@ -179,10 +203,25 @@ export function createSourceCoordinateMap(
       transformedCursor += length;
     }
 
+    const originalText = source.slice(edit.start, edit.end);
+    const semanticAnchor =
+      edit.feature === "return-arrow"
+        ? (() => {
+            const arrowOffset = originalText.indexOf("->");
+            return arrowOffset >= 0
+              ? {
+                  originalAnchorStart: edit.start + arrowOffset,
+                  originalAnchorEnd: edit.start + arrowOffset + 2,
+                }
+              : {};
+          })()
+        : {};
+
     segments.push({
       kind: "replacement",
       originalStart: edit.start,
       originalEnd: edit.end,
+      ...semanticAnchor,
       transformedStart: transformedCursor,
       transformedEnd: transformedCursor + edit.replacement.length,
     });
