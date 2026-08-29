@@ -17,14 +17,6 @@ export interface ViemChainLike {
     readonly decimals?: number | undefined;
   } | undefined;
   readonly testnet?: boolean | undefined;
-  readonly rpcUrls?: Record<string, {
-    readonly http?: readonly string[] | undefined;
-    readonly webSocket?: readonly string[] | undefined;
-  }> | undefined;
-  readonly contracts?: Record<string, unknown> | undefined;
-  readonly fees?: unknown;
-  readonly formatters?: unknown;
-  readonly serializers?: unknown;
 }
 
 export interface EvmViemProfileOverrides {
