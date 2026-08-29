@@ -147,16 +147,42 @@ function run(file: string, args: string[]): never {
   const source = readSource(file);
   const checked = typecheck(source, file);
   ensureChecked(checked);
-  const result = compile(source, { fileName: file, sourceMap: false });
-  if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
   const temp = mkdtempSync(join(tmpdir(), "erascript-"));
   const output = join(temp, "main.mjs");
-  writeFileSync(output, result.javascript, "utf8");
-  const separator = args.indexOf("--");
-  const childArgs = separator >= 0 ? args.slice(separator + 1) : [];
-  const child = spawnSync(process.execPath, [output, ...childArgs], { stdio: "inherit" });
-  rmSync(temp, { recursive: true, force: true });
-  process.exit(child.status ?? 1);
+  let status = 1;
+  try {
+    const result = compile(source, {
+      fileName: file,
+      sourceMap: true,
+      outputFileName: basename(output),
+    });
+    if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
+    if (!result.sourceMap) {
+      console.error("EraScript: runtime source map was requested but the compiler did not produce one");
+      process.exitCode = 1;
+      return process.exit(1);
+    }
+
+    writeFileSync(output, result.javascript, "utf8");
+    writeFileSync(`${output}.map`, result.sourceMap, "utf8");
+
+    const separator = args.indexOf("--");
+    const childArgs = separator >= 0 ? args.slice(separator + 1) : [];
+    const child = spawnSync(
+      process.execPath,
+      ["--enable-source-maps", output, ...childArgs],
+      { stdio: "inherit" },
+    );
+    if (child.error) {
+      console.error(`EraScript: failed to start Node runtime: ${child.error.message}`);
+      status = 1;
+    } else {
+      status = child.status ?? 1;
+    }
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+  process.exit(status);
 }
 
 function init(directory: string | undefined): void {
