@@ -17,6 +17,7 @@ Design/implementation documents:
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
 - [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
+- [`docs/V06_COMPLETION_CRITERIA.md`](docs/V06_COMPLETION_CRITERIA.md)
 
 ## Multi-chain model
 
@@ -344,7 +345,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] Sui serialized-signature verifier bridge via current `@mysten/sui/verify`
 - [x] package-level integration tests for `@solana/kit` 8.1.0 and `@mysten/sui` 2.27.1
 - [x] direct RAILGUN Wallet SDK 10.9.0 private-balance bridge + proof-bound transition helper
-- [ ] live-network Jito/RAILGUN/provider integration matrix
+- [x] isolated live-network Solana RPC / Sui Core API / Jito / RAILGUN-Waku integration matrix
 
 ## Design documents
 
@@ -360,4 +361,4 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
 
-The v0.6 deterministic core tree has a dependency-backed GitHub Actions pass on Node 22 at commit `eda93c961fcdcda630085ea56aaeeb945b15e09e`: `npm install` succeeded with pinned `@solana/kit` 8.1.0, `@mysten/sui` 2.27.1 and `@railgun-community/wallet` 10.9.0, TypeScript built successfully, and 134/134 tests passed. Coverage includes real Solana Kit codec integration, a real Sui Ed25519 TransactionData-intent signature, direct RAILGUN Wallet SDK balance API compatibility, and proof-bound private-state transitions. v0.6 remains experimental until the separately isolated live-network integration suite is green.
+EraScript v0.6 is implementation-complete but remains experimental software. The final implementation baseline is commit `524718c2331ce0c2560c8b3313bde05c8235d9e2`. Core CI run 299 passed on Node 22 with 138/138 tests and 0 failures. Separately isolated Live Network Integration run 7 also passed: Solana mainnet genesis/recent-blockhash evidence, Sui mainnet Core API chain binding/reference gas price, Jito mainnet `getTipAccounts`, and RAILGUN/Waku Ethereum-mainnet peer/Broadcaster discovery all succeeded without submitting transactions or bundles. The RAILGUN live smoke used Waku Broadcaster Client 9.1.1 as a live-only dependency and additionally exposed/fixed current `SelectedBroadcaster.tokenFee` and hexadecimal `feePerUnitGas` compatibility.

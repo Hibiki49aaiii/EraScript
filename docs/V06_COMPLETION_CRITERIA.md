@@ -1,6 +1,6 @@
 # EraScript v0.6 Completion Criteria
 
-Status: release-candidate gates
+Status: implementation complete
 
 v0.6 is complete only when every mandatory gate below is satisfied. Package installation, compilation, a transaction hash, bundle ID, proof ID, signature, checkpoint reference, or L2 inclusion alone is never a completion signal.
 
@@ -14,7 +14,7 @@ Mandatory:
 - [x] current package-level integrations are type/runtime checked for `@solana/kit`, `@mysten/sui`, and `@railgun-community/wallet`.
 - [x] RAILGUN proof-bound before/after private-state transition is covered.
 - [x] OP Stack and Arbitrum settlement provider fixtures are deterministic core tests.
-- [ ] latest main commit has a green Core CI run after all v0.6 completion changes.
+- [x] final implementation baseline `524718c2331ce0c2560c8b3313bde05c8235d9e2` has green Core CI run 299: 138/138 passed, 0 failed.
 
 Core CI is authoritative for deterministic correctness. A public RPC outage must not turn this gate red.
 
@@ -24,10 +24,10 @@ The live workflow is separate from Core CI and is read-only. It may be started m
 
 Mandatory smoke targets:
 
-- [ ] Solana mainnet: genesis binding + confirmed recent-blockhash evidence.
-- [ ] Sui mainnet: current Core API client + chain-identifier binding + reference gas price.
-- [ ] Jito mainnet: Block Engine `getTipAccounts` parsed through the EraScript adapter.
-- [ ] RAILGUN/Waku: live peer/topic connectivity + Broadcaster discovery parsed through the EraScript adapter.
+- [x] Solana mainnet: genesis binding + confirmed recent-blockhash evidence.
+- [x] Sui mainnet: current Core API client + chain-identifier binding + reference gas price.
+- [x] Jito mainnet: Block Engine `getTipAccounts` parsed through the EraScript adapter.
+- [x] RAILGUN/Waku: live peer/topic connectivity + Broadcaster discovery parsed through the EraScript adapter.
 
 No live smoke test may submit a Solana transaction, Jito bundle, Sui transaction, RAILGUN proof/transaction, or EVM transaction.
 
@@ -95,15 +95,17 @@ Mandatory:
 - [x] README describes the multi-chain execution model.
 - [x] `V06_IMPLEMENTATION.md` records implemented evidence gates.
 - [x] deterministic and live CI responsibilities are documented.
-- [ ] README and `V06_IMPLEMENTATION.md` contain the final green Core CI and Live Network Integration run identifiers.
+- [x] README and `V06_IMPLEMENTATION.md` contain the green implementation-baseline Core CI run 299 and Live Network Integration run 7 identifiers.
 
 ## Release rule
 
-v0.6 may be marked **implementation complete** when:
+v0.6 is marked **implementation complete** because:
 
-1. the latest Core CI is green,
-2. all four mandatory read-only live smoke targets are green in one Live Network Integration run,
-3. the final run identifiers are recorded in README and `V06_IMPLEMENTATION.md`,
+1. implementation baseline commit `524718c2331ce0c2560c8b3313bde05c8235d9e2` has green Core CI run 299 with 138/138 tests,
+2. all four mandatory read-only live smoke targets are green together in Live Network Integration run 7,
+3. the implementation-baseline run identifiers are recorded in README and `V06_IMPLEMENTATION.md`,
 4. no mandatory checkbox in this document remains open.
+
+Documentation-only closure commits are still required to remain Core-CI green, but their run IDs are not embedded back into the repository; doing so would create a self-referential commit/run-ID loop.
 
 This does **not** mean every provider, every EVM chain, every wallet backend, or every network condition is certified. It means the v0.6 architecture and its supported integration paths have passed their declared deterministic and live evidence gates.

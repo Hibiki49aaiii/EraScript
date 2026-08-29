@@ -1,6 +1,6 @@
 # EraScript v0.6 — Multi-chain Runtime Implementation
 
-Status: experimental implementation
+Status: v0.6 implementation complete (experimental software)
 
 The architectural contract is defined in `MULTICHAIN_ARCHITECTURE.md`. This document records what is implemented in the v0.6 codebase.
 
@@ -217,12 +217,15 @@ A proof bound to an expired Broadcaster quote is rejected.
 
 Implemented structural interfaces for the current RAILGUN Waku Broadcaster flow:
 
-- `findBestBroadcaster`
+- current three-argument `findBestBroadcaster(chain, tokenAddress, useRelayAdapt)`
 - selected `railgunAddress`
-- `feesID`
-- fee-token binding
+- current nested `SelectedBroadcaster.tokenFee.feesID` plus legacy flat `feesID` compatibility
+- decimal or `0x`-prefixed `feePerUnitGas` normalization to `bigint`
+- selected `tokenAddress` / fee-token binding
 - `BroadcasterTransaction.create(...)`
 - `BroadcasterTransaction.send(...)`
+
+The live Waku integration exposed two upstream-shape assumptions that deterministic fixtures had not caught: current Broadcaster fee data is nested under `tokenFee`, and a live fee may be encoded as a `0x` integer. Both are now covered by deterministic regression tests.
 
 A proof generated for one Broadcaster/fees ID cannot be silently submitted through another selection.
 
@@ -349,11 +352,12 @@ Implemented:
 
 ## 15. CI status
 
-GitHub Actions completed `npm install`, TypeScript build and the full test suite successfully on Node 22 at:
+GitHub Actions completed `npm install`, TypeScript build and the full deterministic test suite successfully on Node 22 at the final implementation baseline:
 
 ```text
-eda93c961fcdcda630085ea56aaeeb945b15e09e
-134 tests / 134 passed / 0 failed
+commit: 524718c2331ce0c2560c8b3313bde05c8235d9e2
+Core CI run: 299
+138 tests / 138 passed / 0 failed
 ```
 
 Pinned SDK integration dependencies at this checkpoint:
@@ -362,15 +366,20 @@ Pinned SDK integration dependencies at this checkpoint:
 - `@mysten/sui` 2.27.1
 - `@railgun-community/wallet` 10.9.0
 
-The suite includes a real Solana Kit v0 wire-transaction decode through the EraScript bridge, a real Sui Ed25519 TransactionData-intent signature through the EraScript verifier bridge, direct type/runtime compatibility with the public RAILGUN Wallet SDK balance exports, and proof-bound private-state transition coverage. Live-network integration is intentionally a separate requirement.
+The deterministic suite includes a real Solana Kit v0 wire-transaction decode through the EraScript bridge, a real Sui Ed25519 TransactionData-intent signature through the EraScript verifier bridge, direct type/runtime compatibility with the public RAILGUN Wallet SDK balance exports, proof-bound private-state transition coverage, production OP Stack/Base/Arbitrum profile fixtures, and current Waku Broadcaster selection-shape regressions.
 
-## 16. Remaining work
+The separately isolated **Live Network Integration run 7** also completed successfully at the same implementation baseline. Read-only live checks passed for Solana mainnet RPC, Sui mainnet Core API, Jito mainnet Block Engine, and RAILGUN/Waku Ethereum mainnet. No transaction, Jito bundle, Sui execution, RAILGUN proof, or EVM transaction was submitted. The RAILGUN smoke reached Waku `Connected`, discovered a live Broadcaster, normalized its fee through the EraScript bridge, and observed live LightPush/Filter peers.
 
-The following must not yet be advertised as fully complete:
+## 16. Post-v0.6 follow-up
 
-1. Live-network integration tests for Solana RPC/Jito, Sui Core API, RAILGUN Wallet SDK/Waku and selected EVM providers.
-2. Production OP Stack/Arbitrum deployment profiles and provider-specific integration fixtures.
-3. Additional EVM-chain profiles and provider capability discovery.
+The v0.6 declared completion gates are satisfied. Work beyond the v0.6 boundary includes:
+
+1. broader EVM-chain profile coverage and provider capability discovery,
+2. additional provider-specific live fixtures beyond the current mandatory smoke matrix,
+3. production deployment hardening for trusted RAILGUN Broadcaster fee-signer policy and application-specific post-state assertions,
+4. expansion of chain/provider conformance matrices as upstream SDK and RPC behavior evolves.
+
+These are follow-up compatibility/hardening items, not blockers for the declared v0.6 implementation-complete milestone.
 
 ## 17. Compatibility promise
 
