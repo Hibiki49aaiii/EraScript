@@ -318,6 +318,47 @@ test("reroute rejects provider evidence older than the current route binding", a
   );
 });
 
+
+test("reroute cannot weaken the original provider capability requirements", async () => {
+  const providerA = await discoverEvmExecutionProvider(
+    client({ provider: "a" }),
+    profile,
+    {
+      providerId: "provider-a",
+      requiredCapabilities: ["eip1559", "debugTraceCall"],
+      observedAtMs: 1_000,
+    },
+  );
+  const weakerProviderB = await discoverEvmExecutionProvider(
+    client({ provider: "b" }),
+    profile,
+    {
+      providerId: "provider-b",
+      requiredCapabilities: ["eip1559"],
+      observedAtMs: 2_000,
+    },
+  );
+
+  const draft = draftTransaction({
+    chain: TestChain,
+    from: address(FROM, TestChain),
+    to: address(TO, TestChain),
+  });
+  const prepared = await prepareEvmProviderExecution(providerA, draft);
+  const simulated = await simulateEvmProviderExecution(providerA, prepared);
+  assert.equal(simulated.state, "provider-simulated");
+  if (simulated.state !== "provider-simulated") {
+    throw new Error("expected simulation success");
+  }
+
+  assert.throws(
+    () => rerouteEvmProviderExecution(simulated, weakerProviderB),
+    (error: unknown) =>
+      error instanceof EraDiagnosticError
+      && error.diagnostic.code === "ES4751",
+  );
+});
+
 test("reroute provider must freshly prove every required capability", async () => {
   await assert.rejects(
     () =>
