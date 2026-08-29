@@ -18,7 +18,7 @@ import {
 } from "../src/chains/index.js";
 
 const DIGEST = "1".repeat(32);
-const OTHER_DIGEST = "2".repeat(32);
+const OTHER_DIGEST = "So11111111111111111111111111111111111111112";
 const ADDRESS = `0x${"11".repeat(32)}`;
 const TX_BASE64 = "AQ==";
 
