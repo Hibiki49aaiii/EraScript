@@ -167,10 +167,20 @@ export function decodeSourceMapMappings(map: SourceMapV3): DecodedSourceMapMappi
       if (previousSource < 0 || previousOriginalLine < 0 || previousOriginalColumn < 0) {
         throw new Error("Source Map V3 decoded source/original coordinates must be non-negative.");
       }
+      if (previousSource >= map.sources.length) {
+        throw new Error(
+          `Source Map V3 decoded source index ${previousSource} is outside sources[0..${Math.max(0, map.sources.length - 1)}].`,
+        );
+      }
 
       if (values.length === 5) {
         previousName += values[4]!;
         if (previousName < 0) throw new Error("Source Map V3 decoded name index must be non-negative.");
+        if (previousName >= map.names.length) {
+          throw new Error(
+            `Source Map V3 decoded name index ${previousName} is outside names[0..${Math.max(0, map.names.length - 1)}].`,
+          );
+        }
         return {
           generatedColumn,
           source: previousSource,
