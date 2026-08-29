@@ -130,9 +130,13 @@ function build(file: string, args: string[]): void {
   const source = readSource(file);
   const checked = typecheck(source, file);
   ensureChecked(checked);
-  const result = compile(source, { fileName: file, sourceMap: true });
-  if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
   const output = parseOutput(args, file);
+  const result = compile(source, {
+    fileName: file,
+    sourceMap: true,
+    outputFileName: basename(output),
+  });
+  if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, result.javascript, "utf8");
   if (result.sourceMap) writeFileSync(`${output}.map`, result.sourceMap, "utf8");
