@@ -543,6 +543,20 @@ export function rerouteEvmProviderExecution<C extends EvmChain>(
     );
   }
 
+  if (nextProvider.binding.observedAtMs < source.provider.observedAtMs) {
+    fail(
+      "ES4754",
+      "ProviderExecutionStaleRerouteEvidence",
+      "EVM provider reroute requires capability evidence at least as recent as the previous provider binding.",
+      {
+        previousProviderId: source.provider.providerId,
+        previousObservedAtMs: source.provider.observedAtMs,
+        nextProviderId: nextProvider.binding.providerId,
+        nextObservedAtMs: nextProvider.binding.observedAtMs,
+      },
+    );
+  }
+
   const blockNumber = source.simulated.simulation.blockNumber;
   const blockHash = source.simulated.simulation.blockHash;
   if (blockNumber === undefined || blockHash === undefined) {
