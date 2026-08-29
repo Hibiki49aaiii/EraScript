@@ -439,7 +439,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] compiler/typecheck compatibility regression
 - [x] deterministic edit overlap guard
 - [x] Post-Implementation Review regression corpus
-- [ ] final v0.11.0 Core CI evidence / Issue #7 closure
+- [x] final v0.11.0 Core CI evidence / Issue #7 closure
 
 ## Design documents
 
@@ -455,6 +455,8 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 
 ## Status
+
+EraScript v0.11.0 frontend baseline is verified at commit `23dd1720f85ad491948c62b1a754abbce939cdc9`. Core CI run **374** passed `npm run check` and `npm run test:core` on Node 22 with **185/185 tests passed and 0 failures**. Issue #7 closes the original v0.1 global lexical transformer risk by moving Era-owned syntax to a source-preserving lexer/parser/AST/edit frontend while preserving ordinary TypeScript identifiers and members.
 
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
 

@@ -1,6 +1,6 @@
 # EraScript v0.11 — Parser/AST Frontend
 
-Status: v0.11.0 release-candidate baseline — final Core CI pending
+Status: implementation complete — EraScript v0.11.0
 
 Issue: #7
 
@@ -242,7 +242,19 @@ Post-Review added and verified two further regression classes after run 369:
 1. valid Era function expressions across additional TypeScript expression prefixes,
 2. regex literals after control headers containing Era-like text.
 
-The package/CLI version is now being advanced atomically to `0.11.0`. The Core CI run for that versioned baseline is the final release gate and will be recorded here before Issue #7 is closed.
+The package and CLI version were advanced atomically to `0.11.0`.
+
+Final release evidence:
+
+```text
+commit: 23dd1720f85ad491948c62b1a754abbce939cdc9
+Core CI run: 374
+npm run check      PASS
+npm run test:core  PASS
+185 tests / 185 passed / 0 failed
+```
+
+This is the versioned v0.11.0 implementation baseline used to close Issue #7.
 
 ## 12. Deliberately out of scope
 
@@ -257,3 +269,18 @@ v0.11 does not add:
 - multi-file `.era` module-resolution redesign
 
 The frontend boundaries introduced here are intended to make those later grammar additions possible without returning to global lexical replacement.
+
+
+## 13. Release result
+
+v0.11 satisfies the Issue #7 acceptance criteria:
+
+- ordinary TypeScript member/property/method/variable names `fn` and `mut` remain source-preserved,
+- existing Era function/mutable/return-arrow/simple-nullable syntax remains supported in recognized contexts,
+- template expression bodies are parsed recursively while protected raw/literal/comment/regex spans remain unchanged,
+- source edits are deterministic and overlap-checked,
+- compiler/typecheck/Web3/multichain regressions remain green,
+- strict TypeScript check passes,
+- final Core CI run 374 passes with 185/185 tests.
+
+The frontend remains deliberately small. New grammar features should extend the AST/parser rather than reintroducing global lexical replacement.
