@@ -241,3 +241,18 @@ Current repository conventions include:
 Do not treat transaction hashes, signatures, bundle IDs, proof IDs, UserOperation hashes, SafeTx hashes, or RPC submission responses alone as proof of successful execution or recovery.
 
 For chain/protocol work, preserve the existing evidence/finality/post-state model.
+
+
+## 13. Final report to the user
+
+After the Issue has been updated, report the completed work using this structure:
+
+- **GitHub Issue** — issue number and title
+- **Implementation Result** — concise summary of what changed
+- **Important Decisions** — only material design decisions
+- **Verification** — actual tests/typecheck/build/lint/manual/CI results; never inferred results
+- **Changed Files** — major files only
+- **Remaining Work** — explicit remaining items, or `None`
+- **Human Understanding** — short explanation of how the feature/process works
+
+The final report must agree with the Issue, current code/tests, and actual verification evidence.
