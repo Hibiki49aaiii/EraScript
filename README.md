@@ -23,6 +23,7 @@ Design/implementation documents:
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 - [`docs/V012_IMPLEMENTATION.md`](docs/V012_IMPLEMENTATION.md)
 - [`docs/V013_IMPLEMENTATION.md`](docs/V013_IMPLEMENTATION.md)
+- [`docs/V014_IMPLEMENTATION.md`](docs/V014_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
 - [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
@@ -469,6 +470,19 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] CLI `era build -o` sourceMappingURL/map filename consistency
 - [x] pre-release Core CI run 397: 203/203 passed
 - [x] final v0.13.0 Core CI evidence / Issue #9 closure
+
+### v0.14 — runtime stack trace remapping
+- [x] `era run` requests the v0.13 composed source map
+- [x] temporary `main.mjs` + `main.mjs.map` runtime lifecycle
+- [x] Node built-in `--enable-source-maps`
+- [x] original `.era` runtime throw line regression
+- [x] emoji/template/return-arrow/`mut` lowering stack regression
+- [x] `--` argument passthrough preserved
+- [x] custom child exit status preserved
+- [x] fail-safe temporary-directory cleanup
+- [x] no new runtime dependency
+- [x] pre-release Core CI run 404: 206/206 passed
+- [ ] final v0.14.0 Core CI evidence / Issue #10 closure
 
 ## Design documents
 
