@@ -40,16 +40,7 @@ function remapRelated(
     !samePrimaryFile(diagnostic, context) ||
     diagnostic.start === undefined
   ) {
-    return {
-      ...diagnostic,
-      ...(diagnostic.relatedInformation
-        ? {
-            relatedInformation: diagnostic.relatedInformation.map((related) =>
-              remapRelated(related, context, originalSourceFile),
-            ),
-          }
-        : {}),
-    };
+    return { ...diagnostic };
   }
 
   const range = remapRange(diagnostic.start, diagnostic.length, context.map);
@@ -58,13 +49,6 @@ function remapRelated(
     file: originalSourceFile,
     start: range.start,
     ...(range.length !== undefined ? { length: range.length } : {}),
-    ...(diagnostic.relatedInformation
-      ? {
-          relatedInformation: diagnostic.relatedInformation.map((related) =>
-            remapRelated(related, context, originalSourceFile),
-          ),
-        }
-      : {}),
   };
 }
 
