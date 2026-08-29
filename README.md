@@ -454,7 +454,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] unsafe-boundary audit IDs/locations use original `.era` coordinates
 - [x] template interpolation mapping regression
 - [x] `era check --json` original filename/line/column regression
-- [ ] final v0.12.0 Core CI evidence / Issue #8 closure
+- [x] final v0.12.0 Core CI evidence / Issue #8 closure
 
 ## Design documents
 
@@ -470,6 +470,8 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 
 ## Status
+
+EraScript v0.12.0 original-source diagnostic baseline is verified at commit `b8c63e0ec0867a6d7870d2df6ebacdc684cd073d`. Core CI run **392** passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **197/197 tests passed and 0 failures**. Issue #8 closes transformed-coordinate drift by deriving one UTF-16 source-coordinate map from the exact frontend edits and using it for TypeScript diagnostics, Web3 diagnostics, unsafe audit IDs, and `era check --json`. During v0.12 development, read-only Live Network Integration run **9** also passed Solana RPC, Sui Core API, Jito, and RAILGUN/Waku regression smoke checks. Generated JavaScript sourcemap/debugger composition remains intentionally outside v0.12 scope.
 
 EraScript v0.11.0 frontend baseline is verified at commit `23dd1720f85ad491948c62b1a754abbce939cdc9`. Core CI run **374** passed `npm run check` and `npm run test:core` on Node 22 with **185/185 tests passed and 0 failures**. Issue #7 closes the original v0.1 global lexical transformer risk by moving Era-owned syntax to a source-preserving lexer/parser/AST/edit frontend while preserving ordinary TypeScript identifiers and members.
 
