@@ -1,6 +1,6 @@
 # EraScript v0.7 — EVM Provider Conformance
 
-Status: implementation complete pending final Core CI evidence  
+Status: implementation complete  
 Issue: #2  
 Base Commit SHA: `78d6d26184f191b12d742a7998c31800a100b08a`
 
@@ -191,17 +191,38 @@ New:
 Modified:
 
 - `src/chains/evm-discovery.ts`
+- `src/chains/evm-viem-bridge.ts`
 - `src/chains/index.ts`
+- `package.json`
+- `src/cli.ts`
 - `README.md`
 
 ## 12. Verification
 
-Planned/required before final completion:
+Final verification:
 
-- [ ] `npm run check`
-- [ ] `npm run test:core`
-- [ ] diagnostic registry remains green
-- [ ] final GitHub Core CI run is green
-- [ ] post-implementation review complete
+- [x] `npm run check`
+- [x] `npm run test:core`
+- [x] diagnostic registry remains green
+- [x] final GitHub Core CI run is green
+- [x] post-implementation review complete
 
-The final CI run ID/commit is recorded only after it actually completes successfully.
+Final release baseline:
+
+```text
+EraScript: 0.7.0
+commit: 8f9a4b435697be71d23ed855c89fc97d4cf629f0
+Core CI run: 316
+tests: 144
+pass: 144
+fail: 0
+```
+
+During verification, Core CI caught two real viem structural-type incompatibilities rather than allowing test-side casts:
+
+1. current viem `Chain.testnet` can be `boolean | undefined` under `exactOptionalPropertyTypes`;
+2. existing/real viem chain objects contain additional metadata such as `rpcUrls`.
+
+The final `ViemChainLike` contract therefore reads only the metadata EraScript needs while allowing additional SDK-owned chain metadata. This keeps the bridge structural without coupling EraScript to viem's full internal Chain shape.
+
+Post-implementation security review also identified that provider RPC exception strings could carry URLs/API credentials in probe details. Provider-scoped conformance evidence now sanitizes those details before persistence/hashing.
