@@ -111,3 +111,38 @@ Planned meanings:
 - no automatic provider discovery/ranking
 - no consensus/light client
 - no rollup L1 replacement
+
+
+## Post-Implementation Review Findings
+
+### Adopted — Evidence integrity verification
+
+The original plan required deterministic observation/quorum hashes but did not explicitly require re-validating those hashes before downstream use.
+
+Final implementation adds:
+
+- observation hash re-computation inside quorum construction,
+- `assertEvmExecutionQuorumIntegrity()`,
+- quorum hash re-computation before promotion,
+- `ES4770 EvmQuorumObservationIntegrityMismatch`,
+- `ES4771 EvmExecutionQuorumIntegrityMismatch`,
+- tamper regression tests.
+
+Reason: TypeScript `readonly` is compile-time only. High-assurance Evidence must reject runtime mutation/forgery before promotion.
+
+### Adopted — BigInt-safe test serialization
+
+Core CI run 331 exposed two test-only failures because raw `JSON.stringify()` cannot serialize bigint fields in Evidence objects.
+
+The tests now use a bigint-safe JSON helper while preserving the original security assertions:
+
+- provider error/endpoint text is not persisted,
+- rollup quorum does not contain `l1-finalized` evidence.
+
+No runtime Evidence representation was weakened.
+
+### Retained — Provider independence boundary
+
+The quorum enforces unique stable provider IDs. EraScript intentionally does not persist endpoint URLs/credentials or claim to cryptographically prove physical/provider-operator independence.
+
+Operational deployments that require infrastructure diversity must assign different IDs to genuinely independent provider routes.
