@@ -446,6 +446,95 @@ function canonicalReceipt<C extends EvmChain>(
     gasUsed: receipt.gasUsed,
   };
 }
+function assertObservationIntegrity<C extends EvmChain>(
+  observation: EvmProviderExecutionObservation<C>,
+): void {
+  const core = {
+    providerId: observation.providerId,
+    providerBindingHash: observation.providerBindingHash,
+    profileId: observation.profileId,
+    chainId: observation.chainId,
+    observedAtMs: observation.observedAtMs,
+    transactionHash: observation.transactionHash,
+    receipt: observation.receipt,
+    canonicality: observation.canonicality,
+    ...(observation.canonicalBlockHash
+      ? { canonicalBlockHash: observation.canonicalBlockHash }
+      : {}),
+    ...(observation.confirmations !== undefined
+      ? { confirmations: observation.confirmations }
+      : {}),
+    finality: observation.finality,
+    ...(observation.finalizedHead
+      ? { finalizedHead: observation.finalizedHead }
+      : {}),
+  } satisfies Omit<
+    EvmProviderExecutionObservation<C>,
+    "kind" | "observationHash" | typeof observationBrand
+  >;
+
+  const expectedHash = sha256(observationCore(core));
+  if (
+    observation[observationBrand] !== true
+    || observation.observationHash !== expectedHash
+  ) {
+    fail(
+      "ES4770",
+      "EvmQuorumObservationIntegrityMismatch",
+      "EVM quorum observation integrity check failed.",
+      {
+        providerId: observation.providerId,
+        expectedObservationHash: expectedHash,
+        actualObservationHash: observation.observationHash,
+      },
+    );
+  }
+}
+
+export function assertEvmExecutionQuorumIntegrity<
+  C extends EvmChain,
+>(
+  quorum: EvmExecutionQuorum<C>,
+): void {
+  for (const observation of quorum.observations) {
+    assertObservationIntegrity(observation);
+  }
+
+  const expectedHash = sha256({
+    scope: quorum.scope,
+    profileId: quorum.profileId,
+    chainId: quorum.chainId,
+    transactionHash: quorum.transactionHash,
+    stage: quorum.stage,
+    minimumProviders: quorum.minimumProviders,
+    minimumConfirmations: quorum.minimumConfirmations,
+    requireFinalized: quorum.requireFinalized,
+    providerIds: quorum.providerIds,
+    observations: quorum.observations.map((observation) => ({
+      providerId: observation.providerId,
+      providerBindingHash: observation.providerBindingHash,
+      observedAtMs: observation.observedAtMs,
+      observationHash: observation.observationHash,
+    })),
+    receipt: quorum.receipt,
+    observedAtMs: quorum.observedAtMs,
+  });
+
+  if (
+    quorum[quorumBrand] !== true
+    || quorum.quorumHash !== expectedHash
+  ) {
+    fail(
+      "ES4771",
+      "EvmExecutionQuorumIntegrityMismatch",
+      "EVM execution quorum integrity check failed.",
+      {
+        expectedQuorumHash: expectedHash,
+        actualQuorumHash: quorum.quorumHash,
+      },
+    );
+  }
+}
 
 export function buildEvmExecutionQuorum<
   C extends EvmChain,
@@ -513,6 +602,7 @@ export function buildEvmExecutionQuorum<
 
   const expectedTxHash = input.source.broadcast.hash;
   for (const observation of observations) {
+    assertObservationIntegrity(observation);
     if (
       observation.profileId !== input.profile.id
       || observation.chainId !== input.profile.chainId
@@ -701,6 +791,7 @@ export function promoteEvmExecutionWithQuorum<
   source: EvmProviderBroadcastExecution<C>,
   quorum: EvmExecutionQuorum<C>,
 ): EvmQuorumPromotedExecution<C> {
+  assertEvmExecutionQuorumIntegrity(quorum);
   if (
     quorum.profileId !== source.provider.profileId
     || quorum.chainId !== source.provider.chainId
