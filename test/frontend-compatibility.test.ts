@@ -131,6 +131,13 @@ test("mut-like text inside a control-following regex is never lowered", () => {
   assert.equal(transformEraScript(input).code, input);
 });
 
+test("regex literals after control headers remain fully syntax-protected", () => {
+  const input = `if (true) /fn(x)->number{1}/.test("fn")
+while (false) /mut value=/.test("mut value=")
+`;
+  assert.equal(transformEraScript(input).code, input);
+});
+
 test("unrecognized arrow-like syntax is never globally rewritten", () => {
   const input = "const text = a -> b";
   assert.equal(transformEraScript(input).code, input);
