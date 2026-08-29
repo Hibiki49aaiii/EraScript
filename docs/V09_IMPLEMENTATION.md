@@ -35,6 +35,12 @@ Default policy:
 
 If any configured verifier is unavailable or disagrees, quorum does not pass.
 
+### Independence boundary
+
+EraScript enforces distinct stable provider IDs and distinct provider-bound verification entries. It deliberately does **not** persist endpoint URLs, credentials, ASN/operator identity, or other secret/network metadata, so it cannot cryptographically prove that two differently named provider IDs ultimately terminate at independent physical infrastructure.
+
+Operational policy must therefore map quorum provider IDs to genuinely independent routes/providers when infrastructure diversity is required.
+
 ## 3. Architecture
 
 ```text
