@@ -69,7 +69,7 @@ Reserve ES4750–ES4759:
 - ES4751 ProviderExecutionEvidenceMismatch
 - ES4752 ProviderExecutionClientMismatch
 - ES4753 ProviderExecutionBindingMismatch
-- ES4754 ProviderExecutionRerouteRequired
+- ES4754 ProviderExecutionStaleRerouteEvidence
 - ES4755 ProviderExecutionNoopReroute
 - ES4756 ProviderExecutionMatrixMismatch
 - ES4757 ProviderExecutionInvalidBinding
