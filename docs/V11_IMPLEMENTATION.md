@@ -1,6 +1,6 @@
 # EraScript v0.11 — Parser/AST Frontend
 
-Status: release candidate — final version baseline pending
+Status: v0.11.0 release-candidate baseline — final Core CI pending
 
 Issue: #7
 
@@ -222,21 +222,27 @@ The v0.11 compatibility suite directly runs both `compile()` and `typecheck()` o
 
 ## 11. Verification
 
-Confirmed checkpoint before final Post-Review hardening:
+Verification checkpoints:
 
 ```text
 Core CI run 369
 npm run check      PASS
 npm run test:core  PASS
 183 tests / 183 passed / 0 failed
+
+Core CI run 373 — Post-Implementation Review frontend gate
+npm run check      PASS
+npm run test:core  PASS
+185 tests / 185 passed / 0 failed
+commit: 98c4620d2e1aa9e243aa3afdd615a483267c2fc6
 ```
 
-Post-Review added two further regression classes after run 369:
+Post-Review added and verified two further regression classes after run 369:
 
 1. valid Era function expressions across additional TypeScript expression prefixes,
 2. regex literals after control headers containing Era-like text.
 
-Final release CI evidence will be recorded here after those regressions and the v0.11.0 version baseline are green.
+The package/CLI version is now being advanced atomically to `0.11.0`. The Core CI run for that versioned baseline is the final release gate and will be recorded here before Issue #7 is closed.
 
 ## 12. Deliberately out of scope
 

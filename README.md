@@ -22,6 +22,9 @@ Design/implementation documents:
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
+- [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
+- [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
+- [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -422,6 +425,21 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] existing single-provider APIs preserved
 - [x] deterministic regression suite / Issue #5
 - [x] final v0.10.0 Core CI evidence / Issue #5 closure
+
+### v0.11 — parser/AST frontend hardening
+- [x] source-preserving lexer / protected literal-comment spans
+- [x] recursive template-expression code scanning
+- [x] explicit Era surface AST nodes + deterministic source edits
+- [x] context-aware `fn` / `pub` / `mut` parsing
+- [x] recognized-function-only return-arrow lowering
+- [x] context-safe simple nullable lowering
+- [x] ordinary TypeScript `fn`/`mut` identifiers and members preserved
+- [x] valid Era function-expression contexts preserved
+- [x] regex literals protected after control headers
+- [x] compiler/typecheck compatibility regression
+- [x] deterministic edit overlap guard
+- [x] Post-Implementation Review regression corpus
+- [ ] final v0.11.0 Core CI evidence / Issue #7 closure
 
 ## Design documents
 
