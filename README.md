@@ -17,7 +17,9 @@ Design/implementation documents:
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
 - [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
+- [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V06_COMPLETION_CRITERIA.md`](docs/V06_COMPLETION_CRITERIA.md)
+- [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -61,6 +63,20 @@ chain.capabilities.bundleRpc // unknown
 ```
 
 Optional features start as `unknown` unless configured or proven. `discoverEvmCapabilities()` can currently gather evidence for EIP-1559/block shape, EIP-4844 block fields, safe/finalized block tags, and `debug_traceCall` while preserving ambiguity when a provider error is not proof of protocol non-support.
+
+v0.7 adds provider-scoped conformance evidence so one RPC provider's behavior is not silently treated as a chain-global guarantee:
+
+```text
+provider A -> supported
+provider B -> unsupported
+             |
+             v
+matrix status = conflict
+global requirement gate = fail
+provider-specific candidate = provider A
+```
+
+`buildEvmConformanceMatrix()` is deliberately fail-closed: only unanimous support produces matrix-level `supported`. Supported+unknown stays `unknown`; supported+unsupported becomes `conflict`. Provider IDs are non-secret labels rather than endpoint URLs.
 
 ### Solana
 
@@ -346,6 +362,17 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] package-level integration tests for `@solana/kit` 8.1.0 and `@mysten/sui` 2.27.1
 - [x] direct RAILGUN Wallet SDK 10.9.0 private-balance bridge + proof-bound transition helper
 - [x] isolated live-network Solana RPC / Sui Core API / Jito / RAILGUN-Waku integration matrix
+
+
+### v0.7 — EVM provider conformance
+- [x] provider-scoped capability evidence
+- [x] deterministic multi-provider conformance matrix
+- [x] explicit provider conflict state
+- [x] fail-closed global capability requirements
+- [x] provider-specific capability routing
+- [x] input-order-independent matrix hash
+- [x] real viem chain fixtures: Ethereum / BSC / Polygon / Avalanche / Gnosis
+- [ ] final Core CI evidence / Issue #2 closure
 
 ## Design documents
 
