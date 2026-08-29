@@ -21,11 +21,11 @@ tests: 206
 pass: 206
 fail: 0
 
-npm audit:
+npm audit (authoritative lockfile):
 67 vulnerabilities
 16 low
-28 moderate
-20 high
+34 moderate
+14 high
 3 critical
 ```
 
@@ -67,7 +67,7 @@ This is a real development supply-chain risk, but it is not a high/critical vuln
 
 ## High/Critical package-node triage
 
-npm reports 20 high + 3 critical vulnerability counts. At package-node aggregation level, the audit exposes 17 high/critical package entries: 14 high and 3 critical. A package entry may aggregate multiple advisories.
+On the authoritative lockfile, npm reports 14 high + 3 critical package-level findings. The audit exposes 17 high/critical package entries in total. A package entry may aggregate multiple underlying advisories.
 
 | Package / resolved version | Severity | Representative dependency path from EraScript root | Disposition |
 | --- | --- | --- | --- |
