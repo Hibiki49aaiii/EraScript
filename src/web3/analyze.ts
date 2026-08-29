@@ -120,7 +120,7 @@ function analyzeUnsafeBoundary(node: ts.CallExpression, diagnostics: EraDiagnost
 
   const audit: UnsafeBoundaryAudit = {
     kind: "unsafe-boundary",
-    id: `${sourceFile.fileName}:${loc.line}:${loc.column}`,
+    id: `${loc.file ?? "module.era"}:${loc.line ?? 1}:${loc.column ?? 1}`,
     reason: normalized,
     ...loc,
   };
