@@ -72,6 +72,15 @@ async function submitted(): Promise<SolanaSubmittedTransaction> {
   };
 }
 
+type SolanaQuorumTestClient = SolanaKitClientLike & {
+  readonly rpc: SolanaKitClientLike["rpc"] & {
+    readonly getBlock: (
+      slot: bigint,
+      config?: Record<string, unknown>,
+    ) => { send(): Promise<unknown> };
+  };
+};
+
 function client(input: {
   slot?: bigint;
   commitment?: "processed" | "confirmed" | "finalized";
@@ -79,7 +88,7 @@ function client(input: {
   found?: boolean;
   blockhash?: string;
   throwStatus?: boolean;
-} = {}): SolanaKitClientLike {
+} = {}): SolanaQuorumTestClient {
   return {
     rpc: {
       getSignatureStatuses: () => ({
@@ -97,12 +106,12 @@ function client(input: {
           };
         },
       }),
-      getBlock: ((slot: bigint) => ({
+      getBlock: (slot: bigint) => ({
         send: async () => ({
           blockhash: input.blockhash ?? BLOCKHASH_2,
           blockHeight: slot,
         }),
-      })) as never,
+      }),
     },
   };
 }
