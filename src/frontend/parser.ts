@@ -132,6 +132,46 @@ function anonymousExpressionPrefix(tokens: readonly EraToken[], fnIndex: number)
   return new Set(["=", "(", "[", ":", "?", "=>"]).has(token.text);
 }
 
+function namedFunctionPrefix(
+  source: string,
+  tokens: readonly EraToken[],
+  fnIndex: number,
+): boolean {
+  let previous = previousIndex(tokens, fnIndex);
+  if (previous === undefined) return true;
+
+  if (isIdentifier(tokens[previous], "async")) {
+    previous = previousIndex(tokens, previous);
+    if (previous === undefined) return true;
+  }
+
+  const token = tokens[previous]!;
+  if (token.kind === "template-expression-start") return true;
+  if (token.kind === "identifier") {
+    return new Set([
+      "pub",
+      "export",
+      "default",
+      "return",
+      "throw",
+      "yield",
+      "await",
+      "case",
+    ]).has(token.text);
+  }
+
+  if (new Set(["{", "}", ";", "=", "(", "[", ":", "?", "=>"]).has(token.text)) {
+    return true;
+  }
+
+  if (token.text === ",") {
+    const opener = nearestUnmatchedOpener(tokens, previous);
+    return opener === "(" || opener === "[";
+  }
+
+  return /[\r\n]/.test(source.slice(token.end, tokens[fnIndex]!.start));
+}
+
 function findBodyAfterType(
   tokens: readonly EraToken[],
   startIndex: number,
@@ -170,7 +210,7 @@ interface ParsedFunction {
   readonly bodyIndex: number;
 }
 
-function parseFunctionAt(tokens: readonly EraToken[], fnIndex: number): ParsedFunction | undefined {
+function parseFunctionAt(source: string, tokens: readonly EraToken[], fnIndex: number): ParsedFunction | undefined {
   if (!isIdentifier(tokens[fnIndex], "fn") || isMemberAccess(tokens, fnIndex)) return undefined;
 
   let cursor = nextIndex(tokens, fnIndex);
@@ -190,7 +230,11 @@ function parseFunctionAt(tokens: readonly EraToken[], fnIndex: number): ParsedFu
   }
 
   if (!isToken(tokens[cursor], "(")) return undefined;
-  if (!named && !anonymousExpressionPrefix(tokens, fnIndex)) return undefined;
+  if (named) {
+    if (!namedFunctionPrefix(source, tokens, fnIndex)) return undefined;
+  } else if (!anonymousExpressionPrefix(tokens, fnIndex)) {
+    return undefined;
+  }
 
   const closeParenIndex = findMatching(tokens, cursor, "(", ")");
   if (closeParenIndex === undefined) return undefined;
@@ -382,7 +426,7 @@ export function parseEraSurface(source: string, allTokens: readonly EraToken[]):
 
   for (let index = 0; index < tokens.length; index += 1) {
     if (!isIdentifier(tokens[index], "fn")) continue;
-    const parsed = parseFunctionAt(tokens, index);
+    const parsed = parseFunctionAt(source, tokens, index);
     if (!parsed) continue;
 
     const fn = tokens[index]!;
