@@ -268,6 +268,12 @@ export function jitoBundleVerificationReportWithSolanaQuorum(
   const bySignature = new Map<string, SolanaExecutionQuorum>();
   for (const quorum of quorums) {
     assertSolanaExecutionQuorumIntegrity(quorum);
+    const signatureKey = String(quorum.signature);
+    if (bySignature.has(signatureKey)) {
+      fail("ES4800", "JitoSolanaQuorumMismatch", "Strict Jito verification received duplicate Solana quorum evidence for the same transaction signature.", {
+        signature: signatureKey,
+      });
+    }
     if (quorum.profileId !== profile.id || quorum.network !== profile.network) {
       fail("ES4800", "JitoSolanaQuorumMismatch", "Solana quorum belongs to a different profile/network than the Jito bundle.", {
         quorumProfileId: quorum.profileId,
@@ -275,7 +281,21 @@ export function jitoBundleVerificationReportWithSolanaQuorum(
         signature: quorum.signature,
       });
     }
-    bySignature.set(String(quorum.signature), quorum);
+    if (status.slot !== undefined && quorum.slot !== status.slot) {
+      fail("ES4800", "JitoSolanaQuorumMismatch", "Solana quorum slot differs from the Jito landed bundle slot.", {
+        signature: quorum.signature,
+        jitoSlot: status.slot.toString(),
+        quorumSlot: quorum.slot.toString(),
+      });
+    }
+    bySignature.set(signatureKey, quorum);
+  }
+
+  if (bySignature.size !== submitted.expectedSignatures.length) {
+    fail("ES4800", "JitoSolanaQuorumMismatch", "Strict Jito verification received extra or missing Solana quorum entries.", {
+      expected: submitted.expectedSignatures.length,
+      actual: bySignature.size,
+    });
   }
 
   const bound = submitted.expectedSignatures.map((signature) => {
