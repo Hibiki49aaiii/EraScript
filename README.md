@@ -482,7 +482,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] fail-safe temporary-directory cleanup
 - [x] no new runtime dependency
 - [x] pre-release Core CI run 404: 206/206 passed
-- [ ] final v0.14.0 Core CI evidence / Issue #10 closure
+- [x] final v0.14.0 Core CI evidence / Issue #10 closure
 
 ## Design documents
 
@@ -498,6 +498,8 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 
 ## Status
+
+EraScript v0.14.0 runtime-stack baseline is verified at release commit `0dba932baf25078369aff7cce68e9e3cedf2bc35`. Core CI run **406** passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **206/206 tests passed and 0 failures**. Issue #10 enables `era run` to consume the v0.13 composed Source Map V3 through Node's built-in `--enable-source-maps`, preserves arguments and child exit status, and cleans temporary JavaScript/map artifacts after success or failure. Post-Implementation Review is approved in `docs/ai/issues/10/POST_IMPLEMENTATION_REVIEW.md`; Issue #10 is closed.
 
 EraScript v0.13.0 emitted-source-map baseline is verified at implementation commit `fbcca7bd620400b61f5a177510480c1a58f1cf86`. Core CI run **401** passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **204/204 tests passed and 0 failures**. Issue #9 composes TypeScript emitter JS→lowered-TS Source Map V3 mappings through the v0.12 coordinate map so generated JavaScript maps to original `.era` line/column coordinates and embeds the original EraScript in `sourcesContent`. CLI `era build -o` also aligns map `file` and `sourceMappingURL` with the actual output filename. Runtime stack-trace/debugger remapping remains intentionally outside v0.13 scope.
 
