@@ -12,13 +12,16 @@ export interface ViemChainLike {
   readonly id: number;
   readonly name: string;
   readonly nativeCurrency?: {
-    readonly name?: string;
-    readonly symbol?: string;
-    readonly decimals?: number;
-  };
-  readonly testnet?: boolean;
-  readonly rpcUrls?: Record<string, { readonly http?: readonly string[]; readonly webSocket?: readonly string[] }>;
-  readonly contracts?: Record<string, unknown>;
+    readonly name?: string | undefined;
+    readonly symbol?: string | undefined;
+    readonly decimals?: number | undefined;
+  } | undefined;
+  readonly testnet?: boolean | undefined;
+  readonly rpcUrls?: Record<string, {
+    readonly http?: readonly string[] | undefined;
+    readonly webSocket?: readonly string[] | undefined;
+  }> | undefined;
+  readonly contracts?: Record<string, unknown> | undefined;
   readonly fees?: unknown;
   readonly formatters?: unknown;
   readonly serializers?: unknown;
