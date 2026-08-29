@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { EraDiagnosticError } from "../src/diagnostics.js";
 import {
+  assertEvmExecutionQuorumIntegrity,
   buildEvmExecutionQuorum,
   defineEvmChainProfile,
   discoverEvmExecutionProvider,
@@ -509,5 +510,62 @@ test("rollup quorum is explicitly L2 execution evidence and does not claim L1 se
   assert.equal(
     JSON.stringify(quorum).includes("l1-finalized"),
     false,
+  );
+});
+
+
+test("quorum rejects tampered provider observation evidence", async () => {
+  const { provider: providerA, source } = await broadcastSource();
+  const providerB = await boundProvider("provider-b");
+
+  const [a, b] = await Promise.all([
+    observeEvmExecutionWithProvider(providerA, source),
+    observeEvmExecutionWithProvider(providerB, source),
+  ]);
+
+  const tampered = {
+    ...b,
+    confirmations: (b.confirmations ?? 0n) + 100n,
+  };
+
+  assert.throws(
+    () =>
+      buildEvmExecutionQuorum({
+        profile,
+        source,
+        observations: [a, tampered],
+      }),
+    (error: unknown) =>
+      error instanceof EraDiagnosticError
+      && error.diagnostic.code === "ES4770",
+  );
+});
+
+test("promotion rejects tampered quorum evidence", async () => {
+  const { provider: providerA, source } = await broadcastSource();
+  const providerB = await boundProvider("provider-b");
+
+  const [a, b] = await Promise.all([
+    observeEvmExecutionWithProvider(providerA, source),
+    observeEvmExecutionWithProvider(providerB, source),
+  ]);
+
+  const quorum = buildEvmExecutionQuorum({
+    profile,
+    source,
+    observations: [a, b],
+  });
+  assert.doesNotThrow(() => assertEvmExecutionQuorumIntegrity(quorum));
+
+  const tampered = {
+    ...quorum,
+    minimumConfirmations: quorum.minimumConfirmations + 1,
+  };
+
+  assert.throws(
+    () => promoteEvmExecutionWithQuorum(source, tampered),
+    (error: unknown) =>
+      error instanceof EraDiagnosticError
+      && error.diagnostic.code === "ES4771",
   );
 });
