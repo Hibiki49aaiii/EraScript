@@ -1,6 +1,6 @@
 # EraScript v0.12 — Original-source diagnostics
 
-Status: implementation complete, final Core CI pending
+Status: implementation complete
 
 Issue: #8
 
@@ -146,10 +146,34 @@ Those features may consume this coordinate-map foundation later.
 
 ## Verification checkpoint
 
-Pending final evidence:
+Final release baseline:
 
-- `npm run check`,
-- `npm run test:core`,
-- green Core CI on the release baseline,
-- version bump to `0.12.0`,
-- Issue #8 Post-Implementation Review and closure.
+```text
+version: 0.12.0
+commit: b8c63e0ec0867a6d7870d2df6ebacdc684cd073d
+Core CI run: 392
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 197
+pass: 197
+fail: 0
+```
+
+Pre-release code verification also passed Core CI run 391 at 197/197 before the
+version-only release commit.
+
+Read-only multi-chain regression smoke during v0.12 development:
+
+```text
+Live Network Integration run: 9
+Solana RPC: PASS
+Sui Core API: PASS
+Jito: PASS
+RAILGUN/Waku: PASS
+```
+
+Post-Implementation Review:
+`docs/ai/issues/8/POST_IMPLEMENTATION_REVIEW.md`.
+
+Issue #8 is approved for closure at the v0.12.0 baseline.
