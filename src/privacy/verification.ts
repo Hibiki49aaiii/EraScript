@@ -22,6 +22,14 @@ export interface RailgunPrivateStateEvidence {
   readonly assertions: readonly RailgunPrivateStateAssertion[];
 }
 
+export interface RailgunBaseTransactionBindingEvidence {
+  readonly kind: "railgun-base-transaction-binding";
+  readonly proofBindingHash: string;
+  readonly transactionHash: `0x${string}`;
+  readonly source: string;
+  readonly observedAtMs: number;
+}
+
 type BaseEvmExecution<C extends EvmChain> = IncludedTx<C> | ConfirmedTx<C, number> | FinalizedTx<C>;
 
 function fail(code: string, kind: string, message: string, details?: Record<string, unknown>): never {
@@ -41,6 +49,30 @@ export function railgunPrivateStateEvidence(input: {
   if (!input.source) fail("ES4561", "MissingRailgunPrivateStateSource", "RAILGUN private-state evidence must identify the wallet/indexer/verification source.");
   if (input.assertions.length === 0) fail("ES4562", "MissingRailgunPrivateStateAssertions", "RAILGUN private-state evidence requires at least one explicit post-state assertion.");
   return { kind: "railgun-private-state-evidence", proofBindingHash: input.proofBindingHash, source: input.source, observedAtMs: input.observedAtMs ?? Date.now(), assertions: input.assertions };
+}
+
+export function railgunBaseTransactionBindingEvidence(input: {
+  proofBindingHash: string;
+  transactionHash: string;
+  source: string;
+  observedAtMs?: number;
+}): RailgunBaseTransactionBindingEvidence {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(input.proofBindingHash)) {
+    fail("ES4805", "RailgunBaseTransactionBindingMismatch", "RAILGUN base-transaction binding requires a 32-byte proof binding hash.");
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(input.transactionHash)) {
+    fail("ES4805", "RailgunBaseTransactionBindingMismatch", "RAILGUN base-transaction binding requires a 32-byte EVM transaction hash.");
+  }
+  if (!input.source) {
+    fail("ES4804", "RailgunBaseTransactionBindingMissing", "RAILGUN base-transaction binding must identify its Broadcaster/indexer/source.");
+  }
+  return {
+    kind: "railgun-base-transaction-binding",
+    proofBindingHash: input.proofBindingHash.toLowerCase(),
+    transactionHash: input.transactionHash.toLowerCase() as `0x${string}`,
+    source: input.source,
+    observedAtMs: input.observedAtMs ?? Date.now(),
+  };
 }
 
 export function railgunVerificationReport<C extends EvmChain>(input: {
@@ -111,6 +143,7 @@ export function railgunVerificationReportWithEvmQuorum<C extends EvmChain>(input
   baseExecution: BaseEvmExecution<C>;
   baseQuorum: EvmExecutionQuorum<C>;
   privateState: RailgunPrivateStateEvidence;
+  baseTransactionBinding?: RailgunBaseTransactionBindingEvidence;
   settlement?: RollupSettlementEvidence;
 }): MultichainVerificationReport {
   assertEvmExecutionQuorumIntegrity(input.baseQuorum);
@@ -137,12 +170,28 @@ export function railgunVerificationReportWithEvmQuorum<C extends EvmChain>(input
       quorumTransactionHash: input.baseQuorum.transactionHash,
     });
   }
-  if (
-    input.submission.submissionId
-    && input.submission.submissionId.toLowerCase() !== txHash.toLowerCase()
+  if (input.baseTransactionBinding) {
+    if (
+      input.baseTransactionBinding.proofBindingHash.toLowerCase()
+        !== input.submission.proof.proofBindingHash.toLowerCase()
+      || input.baseTransactionBinding.transactionHash.toLowerCase()
+        !== txHash.toLowerCase()
+    ) {
+      fail("ES4805", "RailgunBaseTransactionBindingMismatch", "RAILGUN proof-to-base-transaction binding does not match the strict EVM quorum transaction.", {
+        proofBindingHash: input.submission.proof.proofBindingHash,
+        boundProofBindingHash: input.baseTransactionBinding.proofBindingHash,
+        transactionHash: txHash,
+        boundTransactionHash: input.baseTransactionBinding.transactionHash,
+      });
+    }
+  } else if (input.submission.submission === "broadcaster") {
+    fail("ES4804", "RailgunBaseTransactionBindingMissing", "Strict RAILGUN Broadcaster verification requires proof-to-base-transaction binding evidence from a Broadcaster/indexer source.");
+  } else if (
+    !input.submission.submissionId
+    || input.submission.submissionId.toLowerCase() !== txHash.toLowerCase()
   ) {
-    fail("ES4802", "RailgunEvmQuorumMismatch", "RAILGUN submission ID does not match the strict base EVM quorum transaction.", {
-      submissionId: input.submission.submissionId,
+    fail("ES4805", "RailgunBaseTransactionBindingMismatch", "Self-submitted RAILGUN execution ID does not match the strict EVM quorum transaction.", {
+      submissionId: input.submission.submissionId ?? null,
       transactionHash: txHash,
     });
   }
@@ -233,6 +282,9 @@ export function railgunVerificationReportWithEvmQuorum<C extends EvmChain>(input
       multichainEvidenceRef("railgun-submission", input.submission, input.submission.submission),
       multichainEvidenceRef("evm-base-execution", input.baseExecution, "viem"),
       multichainEvidenceRef("evm-execution-quorum", input.baseQuorum, "multi-rpc"),
+      ...(input.baseTransactionBinding
+        ? [multichainEvidenceRef("railgun-base-transaction-binding", input.baseTransactionBinding, input.baseTransactionBinding.source)]
+        : []),
       multichainEvidenceRef("railgun-private-state", input.privateState, input.privateState.source),
       ...(input.settlement
         ? [multichainEvidenceRef("rollup-settlement", input.settlement, input.settlement.adapter)]
