@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./profiles.js";
 export * from "./evm-discovery.js";
 export * from "./evm-conformance.js";
+export * from "./evm-provider-routing.js";
 export * from "./evm-viem-bridge.js";
 export * from "./external-signer.js";
 export * from "./verification.js";
