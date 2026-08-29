@@ -21,12 +21,12 @@ import { address, draftTransaction } from "../src/web3/index.js";
 const TestChain = { name: "Test EVM", id: 777 } as const;
 const FROM = "0x1111111111111111111111111111111111111111";
 const TO = "0x2222222222222222222222222222222222222222";
-const TX_HASH = `0x${"aa".repeat(32)}`;
+const TX_HASH: `0x${string}` = `0x${"aa".repeat(32)}`;
 const RECEIPT_BLOCK = 100n;
-const RECEIPT_HASH = `0x${"33".repeat(32)}`;
-const OTHER_RECEIPT_HASH = `0x${"44".repeat(32)}`;
-const FINALIZED_HASH = `0x${"55".repeat(32)}`;
-const SAFE_HASH = `0x${"66".repeat(32)}`;
+const RECEIPT_HASH: `0x${string}` = `0x${"33".repeat(32)}`;
+const OTHER_RECEIPT_HASH: `0x${string}` = `0x${"44".repeat(32)}`;
+const FINALIZED_HASH: `0x${string}` = `0x${"55".repeat(32)}`;
+const SAFE_HASH: `0x${string}` = `0x${"66".repeat(32)}`;
 
 const profile = genericEvmProfile({
   id: "evm.test.777",
