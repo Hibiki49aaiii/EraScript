@@ -67,7 +67,7 @@ class C { fn() { return 3 } }
   assert.equal(transformEraScript(input).code, input);
 });
 
-test("template raw text is protected while interpolation bodies are parsed as code", () => {
+test("object methods after commas remain TypeScript while array comma can start an Era function expression", () => {\n  const objectInput = `const object = {\n  first: 1,\n  fn() { return 2 },\n  async fn() { return 3 },\n}\n`;\n  assert.equal(transformEraScript(objectInput).code, objectInput);\n\n  const eraInput = `const values = [0, fn(value: number) -> number { return value + 1 }]\n`;\n  const lowered = transformEraScript(eraInput);\n  assert.match(lowered.code, /\[0, function\(value: number\): number \{ return value \+ 1 \}\]/);\n});\ntest("template raw text is protected while interpolation bodies are parsed as code", () => {
   const input = "const value = `raw fn mut -> User? :: ${fn(x: number) -> number { return x + 1 }}`";
   const result = transformEraScript(input);
   assert.match(result.code, /`raw fn mut -> User\? :: \$\{function\(x: number\): number \{ return x \+ 1 \}\}`/);
