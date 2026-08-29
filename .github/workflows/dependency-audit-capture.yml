@@ -6,6 +6,9 @@ on:
     paths:
       - ".github/workflows/dependency-audit-capture.yml"
 
+permissions:
+  contents: write
+
 jobs:
   capture:
     name: Capture dependency baseline
@@ -24,6 +27,13 @@ jobs:
         run: npm ls --all --json > dependency-tree.json || true
       - name: Capture audit report
         run: npm audit --json > audit.json || true
+      - name: Explain high and critical dependency paths
+        run: |
+          for pkg in             "@graphql-mesh/graphql"             "@graphql-mesh/utils"             "@graphql-tools/executor-graphql-ws"             "@graphql-tools/executor-legacy-ws"             "@graphql-tools/url-loader"             "@railgun-community/wallet"             "axios"             "dset"             "eth-lib"             "form-data"             "js-yaml"             "request"             "swarm-js"             "tar"             "web3"             "web3-bzz"             "ws"
+          do
+            echo "===== npm explain $pkg ====="
+            npm explain "$pkg" || true
+          done
       - name: Typecheck
         run: npm run check
       - name: Core tests
@@ -58,3 +68,14 @@ jobs:
             audit.json
             dependency-tree.json
           if-no-files-found: error
+      - name: Commit authoritative lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock.json already matches repository state"
+            exit 0
+          fi
+          git commit -m "build: lock npm dependency graph"
+          git push
