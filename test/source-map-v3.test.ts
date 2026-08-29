@@ -60,6 +60,34 @@ test("Source Map V3 mapping codec round-trips mapped, unmapped and named segment
   assert.deepEqual(decodeSourceMapMappings(parsed), decoded);
 });
 
+test("Source Map V3 decoder fails closed on out-of-range source and name indexes", () => {
+  const invalidSource = parseSourceMapV3(JSON.stringify({
+    version: 3,
+    sources: ["input.ts"],
+    names: [],
+    mappings: encodeSourceMapMappings([[
+      { generatedColumn: 0, source: 1, originalLine: 0, originalColumn: 0 },
+    ]]),
+  }));
+  assert.throws(
+    () => decodeSourceMapMappings(invalidSource),
+    /decoded source index 1 is outside/,
+  );
+
+  const invalidName = parseSourceMapV3(JSON.stringify({
+    version: 3,
+    sources: ["input.ts"],
+    names: ["value"],
+    mappings: encodeSourceMapMappings([[
+      { generatedColumn: 0, source: 0, originalLine: 0, originalColumn: 0, name: 1 },
+    ]]),
+  }));
+  assert.throws(
+    () => decodeSourceMapMappings(invalidName),
+    /decoded name index 1 is outside/,
+  );
+});
+
 test("compiler source map resolves emitted function name to original EraScript source", () => {
   const source = [
     "fn value() -> number {",
