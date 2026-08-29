@@ -291,3 +291,47 @@ Adopted:
 Out of scope:
 - proving physical provider independence.
 - multi-indexer RAILGUN private-state quorum.
+
+
+## Post-Implementation Review / Implementation Result
+
+### Implemented
+
+- Solana provider-scoped execution observations and strict unanimous `SolanaExecutionQuorum`.
+- Jito strict report binding to exact expected transaction signatures, landed slot, and finalized Solana quorum for every expected signature.
+- Sui provider-scoped transaction/effects/checkpoint observations and strict unanimous `SuiExecutionQuorum`.
+- RAILGUN strict report binding to matching base-EVM `EvmExecutionQuorum` plus independent proof-bound private-state Evidence.
+- Runtime observation/quorum integrity re-validation.
+- Family-specific diagnostics and deterministic regression coverage.
+
+### CI hardening findings
+
+The initial implementation exposed strict-TypeScript/test integration issues that were corrected without weakening the architecture:
+
+1. Family-neutral verification `details` intentionally remains scalar-only; quorum provider/hash arrays are deterministically serialized rather than widening the report schema.
+2. Intentionally mismatched RAILGUN quorum fixtures now remain type-correct/brand-correct and fail through integrity/binding checks.
+3. Solana optional `getBlock` observation is represented as an explicit structural test-client extension.
+4. Jito diagnostics distinguish unexpected/wrong quorum (`ES4800`) from a missing expected signature quorum (`ES4801`).
+5. Sui conflict tests use valid alternate 32-byte transaction digests so they reach quorum conflict logic rather than parser rejection.
+
+### Verified implementation baseline
+
+```text
+commit: 09b6153d55c401962187ce28b35dd57ab18dd3b0
+Core CI run: 353
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 171
+pass: 171
+fail: 0
+diagnostic registry: PASS
+```
+
+### Review conclusion
+
+- Requirements: satisfied.
+- Architecture: family-specific semantics preserved; no GenericQuorum abstraction introduced.
+- Security: fail-closed unanimity and evidence-integrity checks preserved.
+- Backward compatibility: existing low-level/single-provider APIs remain available.
+- Remaining release task: promote package/CLI to `0.10.0`, run final Core CI, record final baseline, close Issue #5.
