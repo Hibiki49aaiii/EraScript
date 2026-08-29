@@ -277,6 +277,47 @@ test("provider substitution is rejected and explicit reroute invalidates simulat
   assert.equal(broadcastB.provider.providerId, "provider-b");
 });
 
+
+test("reroute rejects provider evidence older than the current route binding", async () => {
+  const providerA = await discoverEvmExecutionProvider(
+    client({ provider: "a" }),
+    profile,
+    {
+      providerId: "provider-a",
+      requiredCapabilities: ["eip1559"],
+      observedAtMs: 2_000,
+    },
+  );
+  const staleProviderB = await discoverEvmExecutionProvider(
+    client({ provider: "b" }),
+    profile,
+    {
+      providerId: "provider-b",
+      requiredCapabilities: ["eip1559"],
+      observedAtMs: 1_000,
+    },
+  );
+
+  const draft = draftTransaction({
+    chain: TestChain,
+    from: address(FROM, TestChain),
+    to: address(TO, TestChain),
+  });
+  const prepared = await prepareEvmProviderExecution(providerA, draft);
+  const simulated = await simulateEvmProviderExecution(providerA, prepared);
+  assert.equal(simulated.state, "provider-simulated");
+  if (simulated.state !== "provider-simulated") {
+    throw new Error("expected simulation success");
+  }
+
+  assert.throws(
+    () => rerouteEvmProviderExecution(simulated, staleProviderB),
+    (error: unknown) =>
+      error instanceof EraDiagnosticError
+      && error.diagnostic.code === "ES4754",
+  );
+});
+
 test("reroute provider must freshly prove every required capability", async () => {
   await assert.rejects(
     () =>
