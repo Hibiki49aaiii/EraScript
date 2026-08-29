@@ -25,7 +25,7 @@ import {
 } from "./web3/verification-io.js";
 import type { RescueVerificationReport, RescueVerificationState } from "./web3/verification.js";
 
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 const RESCUE_STATES = new Set<RescueVerificationState>([
   "NOT_READY",
   "READY_FOR_BROADCAST",
