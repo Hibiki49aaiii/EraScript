@@ -21,6 +21,7 @@ Design/implementation documents:
 - [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
+- [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -407,6 +408,21 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] deterministic regression suite / Issue #4
 - [x] final v0.9.0 Core CI evidence / Issue #4 closure
 
+### v0.10 — cross-family execution quorum
+- [x] strict Solana multi-provider signature/slot/commitment quorum
+- [x] Solana provider-order-independent observation/quorum integrity hashes
+- [x] strict Jito binding to the exact expected Solana signature set
+- [x] strict Jito landed-slot binding
+- [x] finalized Solana quorum required for every expected Jito transaction
+- [x] strict Sui multi-provider digest/effects/checkpoint quorum
+- [x] Sui provider-order-independent observation/quorum integrity hashes
+- [x] strict RAILGUN binding to matching base-EVM execution quorum
+- [x] proof-bound private-state Evidence remains independently mandatory
+- [x] stable ES4780–ES4800+ diagnostics / registry protection
+- [x] existing single-provider APIs preserved
+- [x] deterministic regression suite / Issue #5
+- [ ] final v0.10.0 Core CI evidence / Issue #5 closure
+
 ## Design documents
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
@@ -460,3 +476,25 @@ fail: 0
 The quorum is deliberately unanimous rather than majority-based. Every supplied verifier must agree on the canonical receipt and meet the requested threshold. Rollup quorum is explicitly L2-execution evidence and does not replace OP Stack/Arbitrum L1 settlement verification.
 
 Post-implementation hardening also re-validates observation/quorum hashes before construction/promotion so runtime-mutated Evidence is rejected with machine-readable diagnostics.
+
+### v0.10 status
+
+EraScript v0.10.0 extends strict post-execution quorum to Solana and Sui while binding Jito and RAILGUN to the relevant base-family trust Evidence.
+
+Implementation/hardening baseline:
+
+```text
+commit: 09b6153d55c401962187ce28b35dd57ab18dd3b0
+Core CI run: 353
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 171
+pass: 171
+fail: 0
+diagnostic registry: PASS
+```
+
+Solana and Sui keep family-native quorum semantics; there is no generic cross-family quorum abstraction. Jito remains backend evidence and requires finalized Solana quorum for every exact expected landed signature. RAILGUN remains an EVM privacy overlay and strict recovery requires both matching base-EVM execution quorum and proof-bound private-state assertions.
+
+Final package/CLI `0.10.0` baseline is pending the release-version Core CI run.
