@@ -63,6 +63,34 @@ test("coordinate map uses UTF-16 offsets consistently with TypeScript/JavaScript
   assert.equal(transformed.coordinateMap.toTransformed(originalMissing), transformedMissing);
 });
 
+test("template interpolation edits preserve later original-source coordinates", () => {
+  const source =
+    "const value = `raw fn -> User? :: ${fn(x: number) -> number { return x + 1 }}`; missingValue";
+  const transformed = transformEraScriptDetailed(source);
+
+  const originalFn = source.indexOf("fn(x: number)");
+  const transformedFn = transformed.code.indexOf("function(x: number)");
+  assert.equal(transformed.coordinateMap.toOriginal(transformedFn, "left"), originalFn);
+
+  const originalArrow = source.indexOf("-> number", originalFn);
+  const transformedColon = transformed.code.indexOf(": number", transformedFn);
+  assert.equal(
+    transformed.coordinateMap.toOriginal(transformedColon, "left"),
+    originalArrow,
+  );
+
+  const originalMissing = source.indexOf("missingValue");
+  const transformedMissing = transformed.code.indexOf("missingValue");
+  assert.equal(
+    transformed.coordinateMap.toOriginal(transformedMissing),
+    originalMissing,
+  );
+  assert.equal(
+    transformed.coordinateMap.toTransformed(originalMissing),
+    transformedMissing,
+  );
+});
+
 test("transformed diagnostic ranges map back across generated replacement text", () => {
   const source = "fn value() -> User? { return null }";
   const transformed = transformEraScriptDetailed(source);
