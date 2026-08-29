@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { remapTypeScriptDiagnostics } from "./frontend/diagnostics.js";
+import { composeTypeScriptSourceMapToEraScript } from "./frontend/source-map-v3.js";
 import { transformEraScriptDetailed } from "./frontend/transform.js";
 
 export interface CompileOptions {
@@ -7,6 +8,8 @@ export interface CompileOptions {
   sourceMap?: boolean;
   target?: ts.ScriptTarget;
   module?: ts.ModuleKind;
+  /** Generated JavaScript filename used only for source-map metadata. */
+  outputFileName?: string;
 }
 
 export interface CompileResult {
@@ -32,10 +35,30 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
     },
   });
 
+  const sourceMap = result.sourceMapText
+    ? composeTypeScriptSourceMapToEraScript({
+        emitterSourceMapText: result.sourceMapText,
+        transformedSource: transformed.code,
+        originalSource: source,
+        originalFileName: fileName,
+        coordinateMap: transformed.coordinateMap,
+        ...(options.outputFileName ? { generatedFileName: options.outputFileName } : {}),
+      })
+    : undefined;
+
+  let javascript = result.outputText;
+  if (sourceMap && options.outputFileName) {
+    const mapName = `${options.outputFileName}.map`;
+    const sourceMapComment = /\/\/# sourceMappingURL=.*(?:\r?\n)?$/;
+    javascript = sourceMapComment.test(javascript)
+      ? javascript.replace(sourceMapComment, `//# sourceMappingURL=${mapName}\n`)
+      : `${javascript.replace(/\s*$/, "")}\n//# sourceMappingURL=${mapName}\n`;
+  }
+
   return {
     typescript: transformed.code,
-    javascript: result.outputText,
-    ...(result.sourceMapText ? { sourceMap: result.sourceMapText } : {}),
+    javascript,
+    ...(sourceMap ? { sourceMap } : {}),
     diagnostics: remapTypeScriptDiagnostics(result.diagnostics ?? [], {
       map: transformed.coordinateMap,
       originalSource: source,
