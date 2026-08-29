@@ -3,6 +3,9 @@ name: Core CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
   pull_request:
 
 concurrency:
