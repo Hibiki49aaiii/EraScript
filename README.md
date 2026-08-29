@@ -372,7 +372,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] provider-specific capability routing
 - [x] input-order-independent matrix hash
 - [x] real viem chain fixtures: Ethereum / BSC / Polygon / Avalanche / Gnosis
-- [ ] final Core CI evidence / Issue #2 closure
+- [x] final Core CI evidence / Issue #2 closure
 
 ## Design documents
 
@@ -389,3 +389,10 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 EraScript is experimental. Successful compilation, simulation, proof generation, signing, broadcast, bundle submission, transaction signature, digest, UserOperation hash, SafeTx hash, or Broadcaster submission alone must not be treated as proof of successful execution or asset recovery.
 
 EraScript v0.6 is implementation-complete but remains experimental software. The final implementation baseline is commit `524718c2331ce0c2560c8b3313bde05c8235d9e2`. Core CI run 299 passed on Node 22 with 138/138 tests and 0 failures. Separately isolated Live Network Integration run 7 also passed: Solana mainnet genesis/recent-blockhash evidence, Sui mainnet Core API chain binding/reference gas price, Jito mainnet `getTipAccounts`, and RAILGUN/Waku Ethereum-mainnet peer/Broadcaster discovery all succeeded without submitting transactions or bundles. The RAILGUN live smoke used Waku Broadcaster Client 9.1.1 as a live-only dependency and additionally exposed/fixed current `SelectedBroadcaster.tokenFee` and hexadecimal `feePerUnitGas` compatibility. CI-policy closure commit `0d3cb10efee46607fc5501f9d247c36bdb976ad4` then passed Core CI run 302 with the same 138/138 result; documentation-only README/`docs/**` pushes and pull requests are excluded from Core CI to avoid self-referential run-ID closure loops.
+
+
+### v0.7 status
+
+EraScript v0.7.0 adds provider-scoped EVM conformance evidence and a deterministic multi-provider capability matrix. The final code/version baseline is commit `8f9a4b435697be71d23ed855c89fc97d4cf629f0`. Core CI run 316 passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **144/144 tests passed and 0 failures**.
+
+The matrix remains deliberately conservative: only unanimous provider support becomes matrix-level `supported`; provider disagreement becomes `conflict`; partial evidence remains `unknown`. Individual providers that prove a requested capability may still be selected explicitly without upgrading chain-global/provider-global conformance.
