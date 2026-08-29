@@ -437,6 +437,24 @@ export async function simulateEvmProviderExecution<C extends EvmChain>(
     };
   }
 
+  if (
+    result.simulation.blockNumber === undefined
+    || result.simulation.blockHash === undefined
+    || result.simulation.provider !== provider.binding.providerId
+  ) {
+    fail(
+      "ES4759",
+      "ProviderExecutionStateMismatch",
+      "Provider-bound simulation must contain a concrete block anchor and the exact bound provider ID.",
+      {
+        providerId: provider.binding.providerId,
+        simulationProvider: result.simulation.provider ?? null,
+        blockNumber: result.simulation.blockNumber?.toString() ?? null,
+        blockHash: result.simulation.blockHash ?? null,
+      },
+    );
+  }
+
   return {
     state: "provider-simulated",
     provider: provider.binding,
@@ -525,14 +543,25 @@ export function rerouteEvmProviderExecution<C extends EvmChain>(
     );
   }
 
+  const blockNumber = source.simulated.simulation.blockNumber;
+  const blockHash = source.simulated.simulation.blockHash;
+  if (blockNumber === undefined || blockHash === undefined) {
+    fail(
+      "ES4759",
+      "ProviderExecutionStateMismatch",
+      "Cannot reroute provider-bound execution whose prior simulation is not block-anchored.",
+      { providerId: source.provider.providerId },
+    );
+  }
+
   return {
     state: "provider-reroute-required",
     previousProvider: source.provider,
     provider: nextProvider.binding,
     prepared: source.prepared,
     invalidatedSimulation: {
-      blockNumber: source.simulated.simulation.blockNumber,
-      blockHash: source.simulated.simulation.blockHash,
+      blockNumber,
+      blockHash,
       providerId: source.provider.providerId,
     },
     invalidatedSignature: source.state === "provider-signed",
