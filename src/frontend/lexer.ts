@@ -276,7 +276,7 @@ export function lexEraScript(source: string): EraToken[] {
         continue;
       }
 
-      if (/[][(){}<>.,:;?=+\-*%&|!~^]/.test(current)) {
+      if ("[](){}<>.,:;?=+-*%&|!~^".includes(current)) {
         if (stopAtTemplateBrace && current === "{") templateBraceDepth += 1;
         if (stopAtTemplateBrace && current === "}" && templateBraceDepth > 0) templateBraceDepth -= 1;
         push("punctuation", index, index + 1);
