@@ -22,6 +22,7 @@ Design/implementation documents:
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
 - [`docs/V012_IMPLEMENTATION.md`](docs/V012_IMPLEMENTATION.md)
+- [`docs/V013_IMPLEMENTATION.md`](docs/V013_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
 - [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
@@ -455,6 +456,19 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] template interpolation mapping regression
 - [x] `era check --json` original filename/line/column regression
 - [x] final v0.12.0 Core CI evidence / Issue #8 closure
+
+### v0.13 — emitted JavaScript source maps
+- [x] dependency-free Source Map V3 Base64 VLQ codec
+- [x] mapped/unmapped/named segment preservation
+- [x] JS → transformed TypeScript → original EraScript composition
+- [x] original `.era` `sourcesContent`
+- [x] v0.12 semantic replacement anchors reused for emitted mappings
+- [x] UTF-16/emoji and multi-edit mapping regression
+- [x] template/nullable lowering followed by later emitted positions
+- [x] ordinary TypeScript identity mapping
+- [x] CLI `era build -o` sourceMappingURL/map filename consistency
+- [x] pre-release Core CI run 397: 203/203 passed
+- [ ] final v0.13.0 Core CI evidence / Issue #9 closure
 
 ## Design documents
 
