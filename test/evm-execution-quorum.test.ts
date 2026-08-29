@@ -29,6 +29,13 @@ const OTHER_RECEIPT_HASH: `0x${string}` = `0x${"44".repeat(32)}`;
 const FINALIZED_HASH: `0x${string}` = `0x${"55".repeat(32)}`;
 const SAFE_HASH: `0x${string}` = `0x${"66".repeat(32)}`;
 
+function json(value: unknown): string {
+  return JSON.stringify(
+    value,
+    (_key, item) => typeof item === "bigint" ? item.toString() : item,
+  );
+}
+
 const profile = genericEvmProfile({
   id: "evm.test.777",
   name: "Test EVM",
@@ -245,7 +252,7 @@ test("two matching providers produce deterministic included quorum and promotion
     "provider-b",
   ]);
   assert.equal(left.quorumHash, right.quorumHash);
-  assert.equal(JSON.stringify(left).includes("private endpoint"), false);
+  assert.equal(json(left).includes("private endpoint"), false);
 
   const promoted = promoteEvmExecutionWithQuorum(source, left);
   assert.equal(promoted.state, "quorum-included");
@@ -381,7 +388,7 @@ test("quorum rejects a provider that returns no receipt", async () => {
     observeEvmExecutionWithProvider(providerB, source),
   ]);
   assert.equal(b.receipt, null);
-  assert.equal(JSON.stringify(b).includes("private endpoint"), false);
+  assert.equal(json(b).includes("private endpoint"), false);
 
   assert.throws(
     () =>
@@ -508,7 +515,7 @@ test("rollup quorum is explicitly L2 execution evidence and does not claim L1 se
   assert.equal(quorum.stage, "finalized");
   assert.equal(quorum.scope, "l2-execution");
   assert.equal(
-    JSON.stringify(quorum).includes("l1-finalized"),
+    json(quorum).includes("l1-finalized"),
     false,
   );
 });
