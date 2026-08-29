@@ -7,25 +7,31 @@ export interface Web3SourceAnalysis {
   readonly unsafeBoundaries: readonly UnsafeBoundaryAudit[];
 }
 
+export type Web3SourceLocation = Pick<EraDiagnostic, "file" | "line" | "column">;
+export type Web3SourceLocationResolver = (transformedOffset: number) => Web3SourceLocation;
+type NodeLocationResolver = (node: ts.Node) => Web3SourceLocation;
+
 function literalValue(node: ts.Expression | undefined): string | undefined {
   if (!node) return undefined;
   return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : undefined;
 }
 
-function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node) {
-  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+function sourceLocation(
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+  resolver?: Web3SourceLocationResolver,
+): Web3SourceLocation {
+  const offset = node.getStart(sourceFile);
+  if (resolver) return resolver(offset);
+  const position = sourceFile.getLineAndCharacterOfPosition(offset);
   return { file: sourceFile.fileName, line: position.line + 1, column: position.character + 1 };
-}
-
-function location(sourceFile: ts.SourceFile, node: ts.Node): Pick<EraDiagnostic, "file" | "line" | "column"> {
-  return sourceLocation(sourceFile, node);
 }
 
 function callName(node: ts.CallExpression): string | undefined {
   return ts.isIdentifier(node.expression) ? node.expression.text : undefined;
 }
 
-function validateFixedHex(sourceFile: ts.SourceFile, node: ts.Node, value: string, expectedDigits: number, code: string, kind: string, label: string): EraDiagnostic | undefined {
+function validateFixedHex(resolveLocation: NodeLocationResolver, node: ts.Node, value: string, expectedDigits: number, code: string, kind: string, label: string): EraDiagnostic | undefined {
   const digits = value.startsWith("0x") ? value.slice(2) : value;
   if (value.startsWith("0x") && /^[0-9a-fA-F]+$/.test(digits) && digits.length === expectedDigits) return undefined;
   return {
@@ -33,7 +39,7 @@ function validateFixedHex(sourceFile: ts.SourceFile, node: ts.Node, value: strin
     severity: "error",
     kind,
     message: `Expected ${label} (${expectedDigits} hexadecimal digits), received ${digits.length} digits.`,
-    ...location(sourceFile, node),
+    ...resolveLocation(node),
     suggestion: digits.length === expectedDigits - 1
       ? "A leading zero may be missing. Verify the source value before padding."
       : `Provide exactly ${expectedDigits} hexadecimal digits with a 0x prefix.`,
@@ -58,11 +64,11 @@ function looksLikePrivateSecret(name: string): boolean {
   return /(PRIVATE.*KEY|WALLET.*KEY|MNEMONIC|SEED(?:_PHRASE)?)/i.test(name);
 }
 
-function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpression, diagnostics: EraDiagnostic[], unsafeBoundaries: UnsafeBoundaryAudit[]): void {
+function analyzeUnsafeBoundary(node: ts.CallExpression, diagnostics: EraDiagnostic[], unsafeBoundaries: UnsafeBoundaryAudit[], resolveLocation: NodeLocationResolver): void {
   const reasonNode = node.arguments[0];
   const operation = node.arguments[1];
   const reason = literalValue(reasonNode);
-  const loc = sourceLocation(sourceFile, node);
+  const loc = resolveLocation(node);
 
   if (!reasonNode || reason === undefined) {
     diagnostics.push({
@@ -130,10 +136,16 @@ function analyzeUnsafeBoundary(sourceFile: ts.SourceFile, node: ts.CallExpressio
   });
 }
 
-export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3SourceAnalysis {
+export function analyzeWeb3Source(
+  source: string,
+  fileName = "module.ts",
+  locationResolver?: Web3SourceLocationResolver,
+): Web3SourceAnalysis {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
   const diagnostics: EraDiagnostic[] = [];
   const unsafeBoundaries: UnsafeBoundaryAudit[] = [];
+  const resolveLocation: NodeLocationResolver = (node) =>
+    sourceLocation(sourceFile, node, locationResolver);
 
   const visit = (node: ts.Node): void => {
     const envName = processEnvName(node);
@@ -143,7 +155,7 @@ export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3S
         severity: "error",
         kind: "DirectPrivateSecretAccess",
         message: `Direct access to secret-like environment variable '${envName}' bypasses EraScript signer capabilities.`,
-        ...location(sourceFile, node),
+        ...resolveLocation(node),
         suggestion: `Use privateKeyEnv("${envName}", chain) and sign through a SignerCapability instead of reading the raw value.`,
       });
     }
@@ -151,12 +163,12 @@ export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3S
     if (ts.isCallExpression(node)) {
       const name = callName(node);
 
-      if (name === "unsafeBoundary") analyzeUnsafeBoundary(sourceFile, node, diagnostics, unsafeBoundaries);
+      if (name === "unsafeBoundary") analyzeUnsafeBoundary(node, diagnostics, unsafeBoundaries, resolveLocation);
 
       if (name === "bytes32" || name === "hash" || name === "merkleRoot" || name === "merkleLeaf") {
         const value = literalValue(node.arguments[0]);
         if (value !== undefined) {
-          const diagnostic = validateFixedHex(sourceFile, node.arguments[0]!, value, 64, "ES3201", "InvalidBytes32", "bytes32");
+          const diagnostic = validateFixedHex(resolveLocation, node.arguments[0]!, value, 64, "ES3201", "InvalidBytes32", "bytes32");
           if (diagnostic) diagnostics.push(diagnostic);
         }
       }
@@ -164,7 +176,7 @@ export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3S
       if (name === "address") {
         const value = literalValue(node.arguments[0]);
         if (value !== undefined) {
-          const diagnostic = validateFixedHex(sourceFile, node.arguments[0]!, value, 40, "ES3101", "InvalidAddress", "20-byte EVM address");
+          const diagnostic = validateFixedHex(resolveLocation, node.arguments[0]!, value, 40, "ES3101", "InvalidAddress", "20-byte EVM address");
           if (diagnostic) diagnostics.push(diagnostic);
         }
       }
@@ -179,7 +191,7 @@ export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3S
               severity: "error",
               kind: "InvalidCalldata",
               message: "Calldata literal must be 0x-prefixed hexadecimal containing whole bytes.",
-              ...location(sourceFile, node.arguments[0]!),
+              ...resolveLocation(node.arguments[0]!),
               suggestion: "Check for a missing hexadecimal nibble or malformed 0x prefix.",
               details: { actualHexDigits: digits.length },
             });
@@ -193,7 +205,7 @@ export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3S
           first.elements.forEach((element, index) => {
             const value = literalValue(element as ts.Expression);
             if (value === undefined) return;
-            const diagnostic = validateFixedHex(sourceFile, element, value, 64, "ES3201", "InvalidBytes32", "Merkle proof node");
+            const diagnostic = validateFixedHex(resolveLocation, element, value, 64, "ES3201", "InvalidBytes32", "Merkle proof node");
             if (diagnostic) {
               diagnostic.path = `proof[${index}]`;
               diagnostics.push(diagnostic);
@@ -210,7 +222,7 @@ export function analyzeWeb3Source(source: string, fileName = "module.ts"): Web3S
             severity: "error",
             kind: "HardcodedPrivateKey",
             message: "A raw private key literal is embedded in source code.",
-            ...location(sourceFile, node.arguments[0]!),
+            ...resolveLocation(node.arguments[0]!),
             suggestion: "Store the key outside source control and reference it through privateKeyEnv() plus a SignerCapability.",
           });
         }
