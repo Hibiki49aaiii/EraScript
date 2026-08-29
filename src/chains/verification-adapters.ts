@@ -377,7 +377,7 @@ export function suiQuorumVerificationReport(
         status: "pass",
         message: `Sui execution quorum passed across ${quorum.providerIds.length} providers.`,
         details: {
-          providers: quorum.providerIds,
+          providers: JSON.stringify(quorum.providerIds),
           stage: quorum.stage,
           checkpoint: quorum.checkpoint?.toString() ?? null,
           quorumHash: quorum.quorumHash,
