@@ -21,6 +21,7 @@ Design/implementation documents:
 - [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
+- [`docs/V012_IMPLEMENTATION.md`](docs/V012_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
 - [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
 - [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
@@ -440,6 +441,20 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] deterministic edit overlap guard
 - [x] Post-Implementation Review regression corpus
 - [x] final v0.11.0 Core CI evidence / Issue #7 closure
+
+### v0.12 — original-source diagnostics
+- [x] deterministic original↔transformed UTF-16 coordinate map
+- [x] semantic replacement anchors for generated tokens such as `->` → `:`
+- [x] public `transformEraScript()` shape preserved
+- [x] detailed transform exposes edits + coordinate map internally
+- [x] TypeScript semantic/syntactic diagnostic remapping
+- [x] same-primary-file related-information remapping
+- [x] dependency/library diagnostics remain on their own files
+- [x] Web3 diagnostics use original `.era` locations
+- [x] unsafe-boundary audit IDs/locations use original `.era` coordinates
+- [x] template interpolation mapping regression
+- [x] `era check --json` original filename/line/column regression
+- [ ] final v0.12.0 Core CI evidence / Issue #8 closure
 
 ## Design documents
 
