@@ -1,4 +1,4 @@
-name: Dependency Audit Capture
+name: Dependency Production Audit
 
 on:
   push:
@@ -7,75 +7,17 @@ on:
       - ".github/workflows/dependency-audit-capture.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  capture:
-    name: Capture dependency baseline
+  audit-production:
+    name: Audit production dependency graph
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Generate lockfile without lifecycle scripts
-        run: npm install --package-lock-only --ignore-scripts
-      - name: Verify exact install
-        run: npm ci
-      - name: Capture dependency tree
-        run: npm ls --all --json > dependency-tree.json || true
-      - name: Capture audit report
-        run: npm audit --json > audit.json || true
-      - name: Explain high and critical dependency paths
-        run: |
-          for pkg in             "@graphql-mesh/graphql"             "@graphql-mesh/utils"             "@graphql-tools/executor-graphql-ws"             "@graphql-tools/executor-legacy-ws"             "@graphql-tools/url-loader"             "@railgun-community/wallet"             "axios"             "dset"             "eth-lib"             "form-data"             "js-yaml"             "request"             "swarm-js"             "tar"             "web3"             "web3-bzz"             "ws"
-          do
-            echo "===== npm explain $pkg ====="
-            npm explain "$pkg" || true
-          done
-      - name: Typecheck
-        run: npm run check
-      - name: Core tests
-        run: npm run test:core
-      - name: Summarize audit
-        run: |
-          node - <<'NODE'
-          const fs = require('fs');
-          const audit = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
-          console.log(JSON.stringify(audit.metadata?.vulnerabilities ?? {}, null, 2));
-          const vulns = audit.vulnerabilities ?? {};
-          for (const [name, v] of Object.entries(vulns)) {
-            if (v.severity === 'high' || v.severity === 'critical') {
-              console.log(JSON.stringify({
-                name,
-                severity: v.severity,
-                isDirect: v.isDirect,
-                via: v.via,
-                effects: v.effects,
-                range: v.range,
-                nodes: v.nodes,
-                fixAvailable: v.fixAvailable
-              }));
-            }
-          }
-          NODE
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dependency-audit-baseline
-          path: |
-            package-lock.json
-            audit.json
-            dependency-tree.json
-          if-no-files-found: error
-      - name: Commit authoritative lockfile
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "package-lock.json already matches repository state"
-            exit 0
-          fi
-          git commit -m "build: lock npm dependency graph"
-          git push
+      - name: Verify production dependency audit has no high/critical finding
+        run: npm audit --omit=dev --audit-level=high
