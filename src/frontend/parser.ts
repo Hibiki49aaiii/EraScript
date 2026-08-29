@@ -61,6 +61,54 @@ function isMemberAccess(tokens: readonly EraToken[], index: number): boolean {
   return previous !== undefined && (isToken(tokens[previous], ".") || isToken(tokens[previous], "?."));
 }
 
+function nearestUnmatchedOpener(
+  tokens: readonly EraToken[],
+  beforeIndex: number,
+): "(" | "[" | "{" | undefined {
+  let paren = 0;
+  let bracket = 0;
+  let brace = 0;
+
+  for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+    const token = tokens[index]!;
+    if (token.text === ")") {
+      paren += 1;
+      continue;
+    }
+    if (token.text === "]") {
+      bracket += 1;
+      continue;
+    }
+    if (token.text === "}") {
+      brace += 1;
+      continue;
+    }
+    if (token.text === "(") {
+      if (paren > 0) {
+        paren -= 1;
+        continue;
+      }
+      if (bracket === 0 && brace === 0) return "(";
+    }
+    if (token.text === "[") {
+      if (bracket > 0) {
+        bracket -= 1;
+        continue;
+      }
+      if (paren === 0 && brace === 0) return "[";
+    }
+    if (token.text === "{") {
+      if (brace > 0) {
+        brace -= 1;
+        continue;
+      }
+      if (paren === 0 && bracket === 0) return "{";
+    }
+  }
+
+  return undefined;
+}
+
 function anonymousExpressionPrefix(tokens: readonly EraToken[], fnIndex: number): boolean {
   let previous = previousIndex(tokens, fnIndex);
   if (previous === undefined) return false;
@@ -76,7 +124,12 @@ function anonymousExpressionPrefix(tokens: readonly EraToken[], fnIndex: number)
     return new Set(["return", "throw", "yield", "await", "case", "default"]).has(token.text);
   }
 
-  return new Set(["=", "(", "[", ",", ":", "?", "=>"]).has(token.text);
+  if (token.text === ",") {
+    const opener = nearestUnmatchedOpener(tokens, previous);
+    return opener === "(" || opener === "[";
+  }
+
+  return new Set(["=", "(", "[", ":", "?", "=>"]).has(token.text);
 }
 
 function findBodyAfterType(
