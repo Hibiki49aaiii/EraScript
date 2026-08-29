@@ -1,0 +1,60 @@
+name: Dependency Audit Capture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dependency-audit-capture.yml"
+
+jobs:
+  capture:
+    name: Capture dependency baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate lockfile without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify exact install
+        run: npm ci
+      - name: Capture dependency tree
+        run: npm ls --all --json > dependency-tree.json || true
+      - name: Capture audit report
+        run: npm audit --json > audit.json || true
+      - name: Typecheck
+        run: npm run check
+      - name: Core tests
+        run: npm run test:core
+      - name: Summarize audit
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+          console.log(JSON.stringify(audit.metadata?.vulnerabilities ?? {}, null, 2));
+          const vulns = audit.vulnerabilities ?? {};
+          for (const [name, v] of Object.entries(vulns)) {
+            if (v.severity === 'high' || v.severity === 'critical') {
+              console.log(JSON.stringify({
+                name,
+                severity: v.severity,
+                isDirect: v.isDirect,
+                via: v.via,
+                effects: v.effects,
+                range: v.range,
+                nodes: v.nodes,
+                fixAvailable: v.fixAvailable
+              }));
+            }
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-baseline
+          path: |
+            package-lock.json
+            audit.json
+            dependency-tree.json
+          if-no-files-found: error
