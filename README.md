@@ -405,7 +405,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] provider error/endpoint secret non-persistence
 - [x] observation/quorum tamper detection
 - [x] deterministic regression suite / Issue #4
-- [ ] final v0.9.0 Core CI evidence / Issue #4 closure
+- [x] final v0.9.0 Core CI evidence / Issue #4 closure
 
 ## Design documents
 
@@ -438,3 +438,25 @@ The matrix remains deliberately conservative: only unanimous provider support be
 EraScript v0.8.0 closes the provider-substitution/TOCTOU gap between v0.7 capability evidence and EVM execution. The final code/version baseline is commit `7da58eb253d422c676e5df0d9c31258f5b0134a1`. Core CI run 327 passed `npm install`, `npm run check`, and `npm run test:core` on Node 22 with **152/152 tests passed and 0 failures**.
 
 The provider-bound route is additive: existing low-level viem/RPC APIs remain compatible, while AI-generated/high-assurance code can require exact provider continuity. Explicit failover returns to prepared state, discards stale simulation/signature evidence, preserves the original capability requirement set, requires fresh-or-newer evidence from the replacement provider, and then requires resimulation and re-signing.
+
+
+### v0.9 status
+
+EraScript v0.9.0 adds strict multi-provider EVM receipt/canonicality/confirmation/finality quorum on top of v0.8 provider-bound execution.
+
+Final code/version baseline:
+
+```text
+commit: 6603a9eef3bda0a774e7d9874a2c55405bd04539
+Core CI run: 336
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 162
+pass: 162
+fail: 0
+```
+
+The quorum is deliberately unanimous rather than majority-based. Every supplied verifier must agree on the canonical receipt and meet the requested threshold. Rollup quorum is explicitly L2-execution evidence and does not replace OP Stack/Arbitrum L1 settlement verification.
+
+Post-implementation hardening also re-validates observation/quorum hashes before construction/promotion so runtime-mutated Evidence is rejected with machine-readable diagnostics.
