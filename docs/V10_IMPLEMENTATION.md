@@ -1,6 +1,6 @@
 # EraScript v0.10 — Cross-Family Execution Quorum
 
-Status: release candidate  
+Status: implementation complete  
 Issue: #5  
 Base Commit SHA: `4a5174b590f648971087091e751b4b91b2aee890`
 
@@ -328,7 +328,21 @@ fail: 0
 diagnostic registry: PASS
 ```
 
-Release-version baseline will be recorded after package/CLI promotion to `0.10.0` and its final Core CI run.
+Final release-version baseline:
+
+```text
+commit: 3e3f945b6087736eda6f00ca8766d5cea83a88f2
+version: 0.10.0
+Core CI run: 354
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 171
+pass: 171
+fail: 0
+```
+
+The release-version baseline preserves the same implementation behavior as the green hardening baseline while promoting package/CLI metadata to `0.10.0`.
 
 ## 13. Release checklist
 
@@ -341,9 +355,18 @@ Release-version baseline will be recorded after package/CLI promotion to `0.10.0
 - [x] Deterministic regression suite.
 - [x] Backward-compatible low-level/single-provider APIs.
 - [x] Implementation Core CI green.
-- [ ] package + CLI version -> `0.10.0`.
-- [ ] final version Core CI green.
-- [ ] README v0.10 status.
-- [ ] Issue #5 final update / closure.
+- [x] package + CLI version -> `0.10.0`.
+- [x] final version Core CI green — run 354.
+- [x] README v0.10 status.
+- [x] Issue #5 final update / closure.
 
 Documentation-only closure commits after the final code/version baseline are excluded from Core CI by repository policy.
+
+
+## 14. Final review record
+
+The dedicated Issue #5 post-implementation review is stored at:
+
+- `docs/ai/issues/5/POST_IMPLEMENTATION_REVIEW.md`
+
+It records the final release-version Core CI evidence, residual out-of-scope limits, and the conclusion that no blocker remains for Issue #5 closure.
