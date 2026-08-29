@@ -196,7 +196,7 @@ export function solanaQuorumVerificationReport(
         status: "pass",
         message: `Solana execution quorum passed across ${quorum.providerIds.length} providers.`,
         details: {
-          providers: quorum.providerIds,
+          providers: JSON.stringify(quorum.providerIds),
           slot: quorum.slot.toString(),
           stage: quorum.stage,
           quorumHash: quorum.quorumHash,
@@ -331,7 +331,7 @@ export function jitoBundleVerificationReportWithSolanaQuorum(
         message: "Every expected Jito transaction is independently finalized by a strict Solana multi-provider quorum.",
         details: {
           transactions: bound.length,
-          quorumHashes: bound.map((quorum) => quorum.quorumHash),
+          quorumHashes: JSON.stringify(bound.map((quorum) => quorum.quorumHash)),
         },
       },
     ],
