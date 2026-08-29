@@ -73,7 +73,9 @@ test("template interpolation edits preserve later original-source coordinates", 
   assert.equal(transformed.coordinateMap.toOriginal(transformedFn, "left"), originalFn);
 
   const originalArrow = source.indexOf("-> number", originalFn);
-  const transformedColon = transformed.code.indexOf(": number", transformedFn);
+  const returnType = transformed.code.indexOf("): number", transformedFn);
+  const transformedColon = returnType + 1;
+  assert.ok(returnType >= transformedFn);
   assert.equal(
     transformed.coordinateMap.toOriginal(transformedColon, "left"),
     originalArrow,
