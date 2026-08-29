@@ -4,7 +4,9 @@ import type { EvmChain } from "../web3/types.js";
 import type { JitoBundleStatusEvidence, JitoBundleSubmitted } from "./jito.js";
 import type { RollupSettlementEvidence } from "./rollup-finality.js";
 import type { SolanaSignatureStatusEvidence, SolanaSubmittedTransaction } from "./solana-adapter.js";
+import { assertSolanaExecutionQuorumIntegrity, type SolanaExecutionQuorum } from "./solana-execution-quorum.js";
 import type { SuiCheckpointEvidence, SuiExecutedTransaction, SuiExecutionFailedTransaction } from "./sui-adapter.js";
+import { assertSuiExecutionQuorumIntegrity, type SuiExecutionQuorum } from "./sui-execution-quorum.js";
 import type { EvmChainProfile, SolanaChainProfile, SuiChainProfile } from "./types.js";
 import {
   createMultichainVerificationReport,
@@ -158,5 +160,220 @@ export function suiExecutionVerificationReport(profile: SuiChainProfile, transac
     state,
     checks,
     evidence: [multichainEvidenceRef("sui-execution", transaction, "@mysten/sui"), ...(checkpoint ? [multichainEvidenceRef("sui-checkpoint", checkpoint, "@mysten/sui")] : [])],
+  });
+}
+
+
+export function solanaQuorumVerificationReport(
+  profile: SolanaChainProfile,
+  submitted: SolanaSubmittedTransaction,
+  quorum: SolanaExecutionQuorum,
+): MultichainVerificationReport {
+  assertSolanaExecutionQuorumIntegrity(quorum);
+  if (
+    quorum.profileId !== profile.id
+    || quorum.network !== profile.network
+    || quorum.signature !== submitted.signature
+    || submitted.simulation.transaction.profileId !== profile.id
+  ) {
+    fail("ES4781", "SolanaQuorumProviderProfileMismatch", "Solana quorum/report binding does not match the submitted transaction/profile.", {
+      profileId: profile.id,
+      quorumProfileId: quorum.profileId,
+      expectedSignature: submitted.signature,
+      quorumSignature: quorum.signature,
+    });
+  }
+
+  const finalized = quorum.stage === "finalized";
+  return createMultichainVerificationReport({
+    profile,
+    backend: "public-rpc",
+    subject: `solana:${submitted.signature}`,
+    state: finalized ? "VERIFIED_FINALITY" : "EXECUTION_OBSERVED",
+    checks: [
+      {
+        id: "solana.quorum",
+        status: "pass",
+        message: `Solana execution quorum passed across ${quorum.providerIds.length} providers.`,
+        details: {
+          providers: quorum.providerIds,
+          slot: quorum.slot.toString(),
+          stage: quorum.stage,
+          quorumHash: quorum.quorumHash,
+        },
+      },
+      {
+        id: "solana.finality",
+        status: finalized ? "pass" : "warning",
+        message: finalized
+          ? "Every Solana quorum provider reports finalized commitment for the same signature/slot."
+          : "Solana quorum agrees on successful execution, but not every provider is finalized.",
+      },
+    ],
+    evidence: [
+      multichainEvidenceRef("solana-submission", submitted, "@solana/kit"),
+      multichainEvidenceRef("solana-execution-quorum", quorum, "multi-rpc"),
+    ],
+  });
+}
+
+export function jitoBundleVerificationReportWithSolanaQuorum(
+  profile: SolanaChainProfile,
+  submitted: JitoBundleSubmitted,
+  status: JitoBundleStatusEvidence,
+  quorums: readonly SolanaExecutionQuorum[],
+): MultichainVerificationReport {
+  if (!submitted.expectedSignatures || submitted.expectedSignatures.length === 0) {
+    fail("ES4801", "JitoSolanaQuorumMissing", "Strict Jito verification requires expected transaction signatures bound at bundle construction.");
+  }
+  if (!status.found || status.err !== undefined) {
+    return createMultichainVerificationReport({
+      profile,
+      backend: "jito-bundle",
+      subject: `jito:${submitted.bundleId}`,
+      state: status.err !== undefined ? "NOT_READY" : "EXECUTION_OBSERVED",
+      checks: [
+        {
+          id: "jito.backend-status",
+          status: status.err !== undefined ? "fail" : "warning",
+          message: status.err !== undefined
+            ? "Jito backend reported bundle execution error."
+            : "Jito bundle is not yet observable through getBundleStatuses.",
+        },
+        {
+          id: "jito.solana-quorum",
+          status: "warning",
+          message: "Strict Solana quorum finality cannot be completed until the Jito transaction set is observed.",
+        },
+      ],
+      evidence: [
+        multichainEvidenceRef("jito-submission", submitted, "Jito Block Engine"),
+        multichainEvidenceRef("jito-bundle-status", status, "Jito Block Engine"),
+      ],
+    });
+  }
+
+  const expected = submitted.expectedSignatures.map(String);
+  const actual = status.transactions.map(String);
+  if (
+    expected.length !== actual.length
+    || expected.some((signature, index) => signature !== actual[index])
+  ) {
+    fail("ES4800", "JitoSolanaQuorumMismatch", "Jito observed transaction set differs from the signatures bound to the submitted bundle.", {
+      expected,
+      actual,
+    });
+  }
+
+  const bySignature = new Map<string, SolanaExecutionQuorum>();
+  for (const quorum of quorums) {
+    assertSolanaExecutionQuorumIntegrity(quorum);
+    if (quorum.profileId !== profile.id || quorum.network !== profile.network) {
+      fail("ES4800", "JitoSolanaQuorumMismatch", "Solana quorum belongs to a different profile/network than the Jito bundle.", {
+        quorumProfileId: quorum.profileId,
+        profileId: profile.id,
+        signature: quorum.signature,
+      });
+    }
+    bySignature.set(String(quorum.signature), quorum);
+  }
+
+  const bound = submitted.expectedSignatures.map((signature) => {
+    const quorum = bySignature.get(String(signature));
+    if (!quorum) {
+      fail("ES4801", "JitoSolanaQuorumMissing", "Strict Jito verification is missing Solana quorum evidence for an expected transaction signature.", {
+        signature,
+      });
+    }
+    if (quorum.stage !== "finalized") {
+      fail("ES4800", "JitoSolanaQuorumMismatch", "Strict Jito finality requires every expected transaction signature to have finalized Solana quorum evidence.", {
+        signature,
+        stage: quorum.stage,
+      });
+    }
+    return quorum;
+  });
+
+  return createMultichainVerificationReport({
+    profile,
+    backend: "jito-bundle",
+    subject: `jito:${submitted.bundleId}`,
+    state: "VERIFIED_FINALITY",
+    checks: [
+      {
+        id: "jito.bundle-binding",
+        status: "pass",
+        message: "Jito reported the exact transaction signature set bound by EraScript.",
+      },
+      {
+        id: "jito.solana-quorum",
+        status: "pass",
+        message: "Every expected Jito transaction is independently finalized by a strict Solana multi-provider quorum.",
+        details: {
+          transactions: bound.length,
+          quorumHashes: bound.map((quorum) => quorum.quorumHash),
+        },
+      },
+    ],
+    evidence: [
+      multichainEvidenceRef("jito-submission", submitted, "Jito Block Engine"),
+      multichainEvidenceRef("jito-bundle-status", status, "Jito Block Engine"),
+      ...bound.map((quorum) =>
+        multichainEvidenceRef("solana-execution-quorum", quorum, "multi-rpc"),
+      ),
+    ],
+  });
+}
+
+export function suiQuorumVerificationReport(
+  profile: SuiChainProfile,
+  transaction: SuiExecutedTransaction,
+  quorum: SuiExecutionQuorum,
+): MultichainVerificationReport {
+  assertSuiExecutionQuorumIntegrity(quorum);
+  if (
+    quorum.profileId !== profile.id
+    || quorum.network !== profile.network
+    || quorum.digest !== transaction.digest
+    || transaction.simulation.transaction.profileId !== profile.id
+  ) {
+    fail("ES4791", "SuiQuorumProviderProfileMismatch", "Sui quorum/report binding does not match the executed transaction/profile.", {
+      profileId: profile.id,
+      quorumProfileId: quorum.profileId,
+      expectedDigest: transaction.digest,
+      quorumDigest: quorum.digest,
+    });
+  }
+
+  const checkpointed = quorum.stage === "checkpointed";
+  return createMultichainVerificationReport({
+    profile,
+    backend: "sui-rpc",
+    subject: `sui:${transaction.digest}`,
+    state: checkpointed ? "VERIFIED_FINALITY" : "EXECUTION_OBSERVED",
+    checks: [
+      {
+        id: "sui.quorum",
+        status: "pass",
+        message: `Sui execution quorum passed across ${quorum.providerIds.length} providers.`,
+        details: {
+          providers: quorum.providerIds,
+          stage: quorum.stage,
+          checkpoint: quorum.checkpoint?.toString() ?? null,
+          quorumHash: quorum.quorumHash,
+        },
+      },
+      {
+        id: "sui.checkpoint",
+        status: checkpointed ? "pass" : "warning",
+        message: checkpointed
+          ? "Every Sui quorum provider agrees on successful execution and checkpoint inclusion."
+          : "Sui quorum agrees on execution but does not yet have required checkpoint finality.",
+      },
+    ],
+    evidence: [
+      multichainEvidenceRef("sui-execution", transaction, "@mysten/sui"),
+      multichainEvidenceRef("sui-execution-quorum", quorum, "multi-core-api"),
+    ],
   });
 }
