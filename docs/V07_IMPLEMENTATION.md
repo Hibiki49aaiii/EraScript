@@ -50,6 +50,8 @@ EvmConformanceMatrix
 
 Provider IDs are labels, not endpoints. URL-like/query/auth-bearing values are rejected so RPC URLs/API keys are not serialized into evidence.
 
+Provider-scoped probe details are also sanitized before storage: HTTP/WSS URLs are replaced with a redaction marker and common credential fields such as API keys, tokens, authorization values, secrets, and passwords are removed.
+
 ## 4. Matrix semantics
 
 v0.6 `CapabilityStatus` remains unchanged:
@@ -171,6 +173,7 @@ The repository diagnostic registry test remains the collision guard.
 - provider conflict is never resolved by majority vote
 - provider-specific support does not mutate chain-global support
 - provider identifiers do not contain endpoint URLs/credentials
+- provider-scoped probe details redact endpoint URLs/common credential forms
 - evidence from different profile IDs or chain IDs cannot enter one matrix
 - one provider ID can appear only once per matrix
 - provider/service-specific APIs still require explicit adapters; they are not guessed from base RPC behavior
