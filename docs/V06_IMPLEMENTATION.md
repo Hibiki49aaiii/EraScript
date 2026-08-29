@@ -370,6 +370,16 @@ The deterministic suite includes a real Solana Kit v0 wire-transaction decode th
 
 The separately isolated **Live Network Integration run 7** also completed successfully at the same implementation baseline. Read-only live checks passed for Solana mainnet RPC, Sui mainnet Core API, Jito mainnet Block Engine, and RAILGUN/Waku Ethereum mainnet. No transaction, Jito bundle, Sui execution, RAILGUN proof, or EVM transaction was submitted. The RAILGUN smoke reached Waku `Connected`, discovered a live Broadcaster, normalized its fee through the EraScript bridge, and observed live LightPush/Filter peers.
 
+The final CI-policy closure commit is:
+
+```text
+commit: 0d3cb10efee46607fc5501f9d247c36bdb976ad4
+Core CI run: 302
+138 tests / 138 passed / 0 failed
+```
+
+That workflow change excludes documentation-only README/`docs/**` pushes and pull requests from Core CI. Code, tests, package metadata and workflow changes remain covered.
+
 ## 16. Post-v0.6 follow-up
 
 The v0.6 declared completion gates are satisfied. Work beyond the v0.6 boundary includes:
