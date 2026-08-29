@@ -51,18 +51,57 @@ const multiPunctuation = [
   "%=",
 ] as const;
 
-function previousNonTrivia(tokens: readonly EraToken[]): EraToken | undefined {
-  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+function previousNonTriviaIndex(
+  tokens: readonly EraToken[],
+  beforeExclusive = tokens.length,
+): number | undefined {
+  for (let index = beforeExclusive - 1; index >= 0; index -= 1) {
     const token = tokens[index]!;
-    if (token.kind !== "whitespace" && token.kind !== "comment" && token.kind !== "template-raw") {
-      return token;
+    if (
+      token.kind !== "whitespace" &&
+      token.kind !== "comment" &&
+      token.kind !== "template-raw"
+    ) {
+      return index;
     }
   }
   return undefined;
 }
 
-function mayStartRegex(previous: EraToken | undefined): boolean {
-  if (!previous) return true;
+function previousNonTrivia(tokens: readonly EraToken[]): EraToken | undefined {
+  const index = previousNonTriviaIndex(tokens);
+  return index === undefined ? undefined : tokens[index];
+}
+
+function closesControlHeader(tokens: readonly EraToken[], closeIndex: number): boolean {
+  if (tokens[closeIndex]?.text !== ")") return false;
+
+  let depth = 0;
+  for (let index = closeIndex; index >= 0; index -= 1) {
+    const token = tokens[index]!;
+    if (token.text === ")") {
+      depth += 1;
+      continue;
+    }
+    if (token.text !== "(") continue;
+
+    depth -= 1;
+    if (depth !== 0) continue;
+
+    const beforeOpen = previousNonTriviaIndex(tokens, index);
+    if (beforeOpen === undefined) return false;
+    const owner = tokens[beforeOpen]!;
+    return owner.kind === "identifier" &&
+      new Set(["if", "while", "for", "with"]).has(owner.text);
+  }
+
+  return false;
+}
+
+function mayStartRegex(tokens: readonly EraToken[]): boolean {
+  const previousIndex = previousNonTriviaIndex(tokens);
+  if (previousIndex === undefined) return true;
+  const previous = tokens[previousIndex]!;
 
   if (previous.kind === "identifier") {
     return new Set([
@@ -77,11 +116,17 @@ function mayStartRegex(previous: EraToken | undefined): boolean {
       "await",
       "in",
       "of",
+      "else",
+      "do",
     ]).has(previous.text);
   }
 
   if (previous.kind === "template-expression-start") return true;
   if (previous.kind !== "punctuation") return false;
+
+  if (previous.text === ")" && closesControlHeader(tokens, previousIndex)) {
+    return true;
+  }
 
   return new Set([
     "(",
@@ -246,7 +291,7 @@ export function lexEraScript(source: string): EraToken[] {
         continue;
       }
 
-      if (current === "/" && next !== "=" && mayStartRegex(previousNonTrivia(tokens))) {
+      if (current === "/" && next !== "=" && mayStartRegex(tokens)) {
         index = scanRegex(index);
         continue;
       }
