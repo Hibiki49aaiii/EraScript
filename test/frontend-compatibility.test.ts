@@ -99,6 +99,11 @@ const actual: Map<string, User>? = undefined
   assert.match(result.code, /Map<string, User> \| null \| undefined/);
 });
 
+test("mut-like text inside a control-following regex is never lowered", () => {
+  const input = `if (true) /mut x=/.test("mut x=")\n`;
+  assert.equal(transformEraScript(input).code, input);
+});
+
 test("unrecognized arrow-like syntax is never globally rewritten", () => {
   const input = "const text = a -> b";
   assert.equal(transformEraScript(input).code, input);
