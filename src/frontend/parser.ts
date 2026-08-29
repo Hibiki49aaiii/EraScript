@@ -224,12 +224,14 @@ function parseMutableBindingAt(
   const binding = tokens[bindingIndex]!;
 
   let continuationIndex: number | undefined;
+  let bindingEnd = binding.end;
 
   if (binding.kind === "identifier") {
     continuationIndex = nextIndex(tokens, bindingIndex);
   } else if (binding.text === "{" || binding.text === "[") {
     const close = findMatching(tokens, bindingIndex, binding.text, binding.text === "{" ? "}" : "]");
     if (close === undefined) return undefined;
+    bindingEnd = tokens[close]!.end;
     continuationIndex = nextIndex(tokens, close);
   } else {
     return undefined;
@@ -242,7 +244,7 @@ function parseMutableBindingAt(
   const continuation = tokens[continuationIndex]!;
   const allowed = new Set(["=", ":", ",", ";", "of", "in"]);
   const separatedByLineBreak = /[\r\n]/.test(
-    source.slice(binding.end, continuation.start),
+    source.slice(bindingEnd, continuation.start),
   );
 
   if (!allowed.has(continuation.text) && !separatedByLineBreak) return undefined;
