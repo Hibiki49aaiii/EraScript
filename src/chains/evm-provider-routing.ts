@@ -31,7 +31,7 @@ import {
 } from "./evm-conformance.js";
 import type { EvmChainProfile } from "./types.js";
 
-declare const boundProviderBrand: unique symbol;
+const boundProviderBrand: unique symbol = Symbol("erascript.evm.bound-provider");
 
 export interface EvmProviderExecutionBinding {
   readonly kind: "evm-provider-execution-binding";
