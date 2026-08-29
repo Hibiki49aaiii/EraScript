@@ -146,3 +146,22 @@ No runtime Evidence representation was weakened.
 The quorum enforces unique stable provider IDs. EraScript intentionally does not persist endpoint URLs/credentials or claim to cryptographically prove physical/provider-operator independence.
 
 Operational deployments that require infrastructure diversity must assign different IDs to genuinely independent provider routes.
+
+
+## Final Verification
+
+```text
+EraScript version: 0.9.0
+code/version baseline: 6603a9eef3bda0a774e7d9874a2c55405bd04539
+Core CI run: 336
+npm install: PASS
+npm run check: PASS
+npm run test:core: PASS
+tests: 162
+pass: 162
+fail: 0
+```
+
+Implementation code baseline `8e20a0b873173723c29fd918397c595952fff87b` also passed Core CI run 334 with 162/162 tests before the version promotion.
+
+Documentation-only closure commits follow the verified code/version baseline and are excluded from Core CI by repository policy.
