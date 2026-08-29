@@ -212,6 +212,51 @@ test("matrix rejects duplicate providers, mixed profiles, and endpoint-like prov
   );
 });
 
+test("provider evidence redacts endpoint and credential material from probe details", async () => {
+  const profile = genericEvmProfile({
+    id: "evm.test.777",
+    name: "Test EVM",
+    chainId: 777,
+  });
+  const leakingClient = {
+    chain: { id: 777, name: "Test EVM" },
+    async getBlock({ blockTag }: { blockTag: string }) {
+      if (blockTag === "latest") {
+        return {
+          number: 100n,
+          hash: `0x${"11".repeat(32)}`,
+          baseFeePerGas: 1n,
+        };
+      }
+      throw new Error("request failed at https://rpc.example/v1?api_key=super-secret token=abc123");
+    },
+    async request() {
+      throw new Error("request failed at wss://rpc.example/ws?token=super-secret authorization=BearerSecret");
+    },
+  };
+
+  const observed = await discoverEvmProviderConformance(
+    leakingClient,
+    profile,
+    { providerId: "provider-redacted", observedAtMs: 1_000 },
+  );
+  const serialized = JSON.stringify(observed.probes);
+  assert.equal(serialized.includes("rpc.example"), false);
+  assert.equal(serialized.includes("super-secret"), false);
+  assert.equal(serialized.includes("abc123"), false);
+  assert.equal(serialized.includes("[redacted-url]"), true);
+
+  assert.throws(
+    () =>
+      createEvmProviderConformanceEvidence(evidence(), {
+        providerId: "rpc.example.com",
+      }),
+    (error: unknown) =>
+      error instanceof EraDiagnosticError
+      && error.diagnostic.code === "ES4740",
+  );
+});
+
 test("unanimous unsupported requirements produce a distinct fail-closed diagnostic", () => {
   const left = createEvmProviderConformanceEvidence(
     evidence({
