@@ -15,6 +15,7 @@ Mandatory:
 - [x] RAILGUN proof-bound before/after private-state transition is covered.
 - [x] OP Stack and Arbitrum settlement provider fixtures are deterministic core tests.
 - [x] final implementation baseline `524718c2331ce0c2560c8b3313bde05c8235d9e2` has green Core CI run 299: 138/138 passed, 0 failed.
+- [x] final CI-policy closure `0d3cb10efee46607fc5501f9d247c36bdb976ad4` has green Core CI run 302: 138/138 passed, 0 failed.
 
 Core CI is authoritative for deterministic correctness. A public RPC outage must not turn this gate red.
 
@@ -103,9 +104,10 @@ v0.6 is marked **implementation complete** because:
 
 1. implementation baseline commit `524718c2331ce0c2560c8b3313bde05c8235d9e2` has green Core CI run 299 with 138/138 tests,
 2. all four mandatory read-only live smoke targets are green together in Live Network Integration run 7,
-3. the implementation-baseline run identifiers are recorded in README and `V06_IMPLEMENTATION.md`,
-4. no mandatory checkbox in this document remains open.
+3. CI-policy closure commit `0d3cb10efee46607fc5501f9d247c36bdb976ad4` has green Core CI run 302 with 138/138 tests,
+4. the implementation/live/CI-policy run identifiers are recorded in README and `V06_IMPLEMENTATION.md`,
+5. no mandatory checkbox in this document remains open.
 
-Documentation-only closure commits are still required to remain Core-CI green, but their run IDs are not embedded back into the repository; doing so would create a self-referential commit/run-ID loop.
+After CI-policy closure, documentation-only README/`docs/**` pushes and pull requests are intentionally excluded from Core CI. They inherit the latest green implementation/CI-policy baseline and do not create a self-referential run-ID loop.
 
 This does **not** mean every provider, every EVM chain, every wallet backend, or every network condition is certified. It means the v0.6 architecture and its supported integration paths have passed their declared deterministic and live evidence gates.
