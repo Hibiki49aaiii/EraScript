@@ -419,6 +419,7 @@ export function buildSuiExecutionQuorum(input: {
 
   let checkpoint: bigint | undefined;
   let effectsDigest: string | undefined;
+  let allCheckpointed = true;
 
   for (const observation of observations) {
     assertObservationIntegrity(observation);
@@ -473,6 +474,7 @@ export function buildSuiExecutionQuorum(input: {
         providerId: observation.providerId,
       });
     }
+    if (observation.checkpoint === undefined) allCheckpointed = false;
     if (observation.checkpoint !== undefined) {
       if (checkpoint === undefined) checkpoint = observation.checkpoint;
       else if (checkpoint !== observation.checkpoint) {
@@ -485,7 +487,10 @@ export function buildSuiExecutionQuorum(input: {
     }
   }
 
-  const stage = checkpoint !== undefined ? "checkpointed" : "observed";
+  const stage =
+    allCheckpointed && checkpoint !== undefined
+      ? "checkpointed"
+      : "observed";
   const observedAtMs = Math.max(...observations.map((entry) => entry.observedAtMs));
   const core = {
     profileId: input.profile.id,
