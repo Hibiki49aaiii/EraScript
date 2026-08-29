@@ -1,5 +1,7 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import { RailgunPrivacyOverlay } from "../chains/profiles.js";
+import { assertEvmExecutionQuorumIntegrity, type EvmExecutionQuorum } from "../chains/evm-execution-quorum.js";
+import type { RollupSettlementEvidence } from "../chains/rollup-finality.js";
 import { createMultichainVerificationReport, multichainEvidenceRef, type MultichainVerificationCheck, type MultichainVerificationReport } from "../chains/verification.js";
 import type { EvmChainProfile } from "../chains/types.js";
 import type { ConfirmedTx, FinalizedTx, IncludedTx } from "../web3/tx.js";
@@ -98,6 +100,143 @@ export function railgunVerificationReport<C extends EvmChain>(input: {
       multichainEvidenceRef("railgun-submission", input.submission, input.submission.submission),
       ...(input.baseExecution ? [multichainEvidenceRef("evm-base-execution", input.baseExecution, "viem")] : []),
       ...(input.privateState ? [multichainEvidenceRef("railgun-private-state", input.privateState, input.privateState.source)] : []),
+    ],
+  });
+}
+
+
+export function railgunVerificationReportWithEvmQuorum<C extends EvmChain>(input: {
+  profile: EvmChainProfile;
+  submission: RailgunSubmittedTransaction<C>;
+  baseExecution: BaseEvmExecution<C>;
+  baseQuorum: EvmExecutionQuorum<C>;
+  privateState: RailgunPrivateStateEvidence;
+  settlement?: RollupSettlementEvidence;
+}): MultichainVerificationReport {
+  assertEvmExecutionQuorumIntegrity(input.baseQuorum);
+
+  const txHash = input.baseExecution.receipt.transactionHash;
+  if (
+    input.submission.chain.id !== input.profile.chainId
+    || input.baseExecution.intent.chain.id !== input.profile.chainId
+    || input.baseQuorum.profileId !== input.profile.id
+    || input.baseQuorum.chainId !== input.profile.chainId
+    || input.baseQuorum.transactionHash.toLowerCase() !== txHash.toLowerCase()
+    || input.baseQuorum.receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()
+    || input.baseQuorum.receipt.blockNumber !== input.baseExecution.receipt.blockNumber
+    || input.baseQuorum.receipt.blockHash.toLowerCase() !== input.baseExecution.receipt.blockHash.toLowerCase()
+  ) {
+    fail("ES4802", "RailgunEvmQuorumMismatch", "RAILGUN strict verification received base EVM quorum evidence for a different chain/transaction/block.", {
+      profileId: input.profile.id,
+      profileChainId: input.profile.chainId,
+      submissionChainId: input.submission.chain.id,
+      executionChainId: input.baseExecution.intent.chain.id,
+      quorumProfileId: input.baseQuorum.profileId,
+      quorumChainId: input.baseQuorum.chainId,
+      executionTransactionHash: txHash,
+      quorumTransactionHash: input.baseQuorum.transactionHash,
+    });
+  }
+  if (
+    input.submission.submissionId
+    && input.submission.submissionId.toLowerCase() !== txHash.toLowerCase()
+  ) {
+    fail("ES4802", "RailgunEvmQuorumMismatch", "RAILGUN submission ID does not match the strict base EVM quorum transaction.", {
+      submissionId: input.submission.submissionId,
+      transactionHash: txHash,
+    });
+  }
+  if (
+    input.baseQuorum.stage !== "finalized"
+    || input.baseQuorum.receipt.status !== "success"
+    || input.baseExecution.receipt.status !== "success"
+  ) {
+    fail("ES4803", "RailgunEvmQuorumMissing", "RAILGUN strict verification requires a successful finalized EVM execution quorum.", {
+      quorumStage: input.baseQuorum.stage,
+      quorumReceiptStatus: input.baseQuorum.receipt.status,
+      executionReceiptStatus: input.baseExecution.receipt.status,
+    });
+  }
+
+  if (
+    input.privateState.proofBindingHash.toLowerCase()
+    !== input.submission.proof.proofBindingHash.toLowerCase()
+  ) {
+    fail("ES4560", "InvalidRailgunPrivateStateBinding", "RAILGUN private-state evidence belongs to a different proof binding.");
+  }
+  const failedPrivate = input.privateState.assertions.filter((assertion) => !assertion.passed);
+  if (failedPrivate.length > 0) {
+    fail("ES4562", "MissingRailgunPrivateStateAssertions", "RAILGUN strict verification requires all proof-bound private-state assertions to pass.", {
+      assertions: input.privateState.assertions.length,
+      failed: failedPrivate.length,
+    });
+  }
+
+  let rollupFinal = true;
+  const checks: MultichainVerificationCheck[] = [
+    {
+      id: "railgun.evm-quorum",
+      status: "pass",
+      message: `Base EVM transaction is finalized by a strict ${input.baseQuorum.providerIds.length}-provider quorum.`,
+      details: {
+        transactionHash: txHash,
+        quorumHash: input.baseQuorum.quorumHash,
+        scope: input.baseQuorum.scope,
+      },
+    },
+    {
+      id: "railgun.private-state",
+      status: "pass",
+      message: "Proof-bound RAILGUN private-state assertions passed.",
+      details: {
+        assertions: input.privateState.assertions.length,
+        proofBindingHash: input.privateState.proofBindingHash,
+      },
+    },
+  ];
+
+  if (input.profile.finality.kind === "evm-rollup") {
+    const settlement = input.settlement;
+    const matching = settlement
+      && settlement.profileId === input.profile.id
+      && settlement.l2TransactionHash.toLowerCase() === txHash.toLowerCase()
+      && settlement.l2BlockNumber === input.baseExecution.receipt.blockNumber
+      && settlement.l2BlockHash.toLowerCase() === input.baseExecution.receipt.blockHash.toLowerCase();
+    rollupFinal = Boolean(matching && settlement?.stage === "l1-finalized");
+    checks.push({
+      id: "railgun.rollup-settlement",
+      status: rollupFinal ? "pass" : "warning",
+      message: rollupFinal
+        ? "Base rollup transaction has protocol-specific L1-finalized settlement evidence."
+        : "EVM quorum proves L2 execution only; protocol-specific L1-finalized settlement is still required.",
+      ...(settlement ? {
+        details: {
+          settlementStage: settlement.stage,
+          protocol: settlement.protocol,
+        },
+      } : {}),
+    });
+  } else if (input.settlement) {
+    fail("ES4802", "RailgunEvmQuorumMismatch", "Rollup settlement evidence was supplied for a non-rollup RAILGUN base chain.");
+  }
+
+  return createMultichainVerificationReport({
+    profile: input.profile,
+    backend: input.submission.submission === "broadcaster"
+      ? "railgun-broadcaster"
+      : "railgun-self-submit",
+    overlay: RailgunPrivacyOverlay,
+    subject: `railgun:${input.submission.proof.proofBindingHash}`,
+    state: rollupFinal ? "VERIFIED_FINALITY" : "EXECUTION_OBSERVED",
+    checks,
+    evidence: [
+      multichainEvidenceRef("railgun-submission", input.submission, input.submission.submission),
+      multichainEvidenceRef("evm-base-execution", input.baseExecution, "viem"),
+      multichainEvidenceRef("evm-execution-quorum", input.baseQuorum, "multi-rpc"),
+      multichainEvidenceRef("railgun-private-state", input.privateState, input.privateState.source),
+      ...(input.settlement
+        ? [multichainEvidenceRef("rollup-settlement", input.settlement, input.settlement.adapter)]
+        : []),
     ],
   });
 }
