@@ -27,6 +27,7 @@ import {
   Ethereum,
   address,
   draftTransaction,
+  transactionHash,
 } from "../src/web3/index.js";
 
 const FROM = "0x1111111111111111111111111111111111111111";
@@ -199,7 +200,7 @@ test("strict RAILGUN verification rejects mismatched quorum and failed private-s
 
   const wrongQuorum = {
     ...quorum,
-    transactionHash: `0x${"bb".repeat(32)}`,
+    transactionHash: transactionHash(`0x${"bb".repeat(32)}`, Ethereum),
   };
   assert.throws(
     () => railgunVerificationReportWithEvmQuorum({
