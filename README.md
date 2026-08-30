@@ -16,18 +16,22 @@ Design/implementation documents:
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
+- [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md)
+- [`docs/V03_IMPLEMENTATION.md`](docs/V03_IMPLEMENTATION.md)
+- [`docs/V04_IMPLEMENTATION.md`](docs/V04_IMPLEMENTATION.md)
+- [`docs/V05_IMPLEMENTATION.md`](docs/V05_IMPLEMENTATION.md)
 - [`docs/V06_IMPLEMENTATION.md`](docs/V06_IMPLEMENTATION.md)
 - [`docs/V06_COMPLETION_CRITERIA.md`](docs/V06_COMPLETION_CRITERIA.md)
 - [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
-- [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
+- [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
+- [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
 - [`docs/V012_IMPLEMENTATION.md`](docs/V012_IMPLEMENTATION.md)
 - [`docs/V013_IMPLEMENTATION.md`](docs/V013_IMPLEMENTATION.md)
 - [`docs/V014_IMPLEMENTATION.md`](docs/V014_IMPLEMENTATION.md)
 - [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
-- [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
-- [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
+- [`docs/V016_IMPLEMENTATION.md`](docs/V016_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -291,7 +295,8 @@ User intent
 npm install
 npm run build
 
-era build app.era -o app.js
+era build                    # uses era.json entry/outDir
+era build app.era -o app.js  # explicit legacy single-file build
 era run app.era
 era run                    # uses era.json entry
 era check app.era
@@ -501,6 +506,23 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] final Core CI run 422: 211/211 passed
 - [x] Issue #12 Post-Implementation Review approved
 
+
+### v0.16 — multi-file project build
+- [x] `era build` consumes `era.json.entry` / `outDir`
+- [x] explicit relative `.era` module graph discovery
+- [x] cycle-safe deterministic graph traversal
+- [x] project-relative `.mjs` output layout
+- [x] syntax-aware equal-length `.era -> .mjs` specifier rewrite
+- [x] composed source map per emitted EraScript module
+- [x] direct local JS/MJS/CJS/JSON runtime asset copying
+- [x] bare npm imports preserved
+- [x] project-root/output-root escape rejection
+- [x] built project executes under plain Node
+- [x] imported built-module stack maps to original `.era`
+- [x] explicit legacy single-file build preserved
+- [x] final Core CI run 430: 216/216 passed
+- [x] Issue #13 Post-Implementation Review approved
+
 ## Design documents
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
@@ -513,8 +535,17 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V07_IMPLEMENTATION.md`](docs/V07_IMPLEMENTATION.md)
 - [`docs/V08_IMPLEMENTATION.md`](docs/V08_IMPLEMENTATION.md)
 - [`docs/V09_IMPLEMENTATION.md`](docs/V09_IMPLEMENTATION.md)
+- [`docs/V10_IMPLEMENTATION.md`](docs/V10_IMPLEMENTATION.md)
+- [`docs/V11_IMPLEMENTATION.md`](docs/V11_IMPLEMENTATION.md)
+- [`docs/V012_IMPLEMENTATION.md`](docs/V012_IMPLEMENTATION.md)
+- [`docs/V013_IMPLEMENTATION.md`](docs/V013_IMPLEMENTATION.md)
+- [`docs/V014_IMPLEMENTATION.md`](docs/V014_IMPLEMENTATION.md)
+- [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
+- [`docs/V016_IMPLEMENTATION.md`](docs/V016_IMPLEMENTATION.md)
 
 ## Status
+
+EraScript v0.16.0 multi-file project build is verified at code baseline `61f6a0127421cbff8dcbf4660c1b87f774a864b5`. Core CI run **430** passed `npm ci`, `npm run check`, and `npm run test:core` on Node 22 with **216/216 tests passed and 0 failures**. `era build` without an explicit file now consumes `era.json`, emits each reachable explicit relative EraScript module as project-relative `.mjs` plus a composed source map, rewrites `.era` specifiers to equal-length `.mjs`, copies directly referenced local runtime assets, preserves bare npm imports, rejects project-root escapes, and retains the legacy explicit single-file build path. Post-Implementation Review is approved in `docs/ai/issues/13/POST_IMPLEMENTATION_REVIEW.md`.
 
 EraScript v0.15.0 project-module runtime is verified at code baseline `54348debb132f52dd345e111e11ca647dc7b6c0c`. Core CI run **422** passed `npm ci`, `npm run check`, and `npm run test:core` on Node 22 with **211/211 tests passed and 0 failures**. `era run` now executes original `.era` URLs through a Node ESM loader, so relative EraScript modules, relative JavaScript modules, and normal npm package resolution retain project semantics while composed source maps continue to report original EraScript locations. `era.json` is now consumed as the implicit entry for `era run` and `era check`. Node support is explicitly `>=20.6.0`. Standalone multi-file `era build` emission remains the next separate project-compiler task.
 
