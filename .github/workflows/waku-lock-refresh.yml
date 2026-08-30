@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "test/live/waku-deps/package.json"
+      - "test/live/railgun-waku.live.ts"
       - ".github/workflows/waku-lock-refresh.yml"
 
 permissions:
