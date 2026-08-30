@@ -92,7 +92,7 @@ export function findEraProject(startDirectory = process.cwd()): EraProject | und
   }
 }
 
-export function requireEraProjectEntry(startDirectory = process.cwd()): string {
+export function requireEraProject(startDirectory = process.cwd()): EraProject {
   const project = findEraProject(startDirectory);
   if (!project) {
     throw new EraProjectConfigError(
@@ -100,5 +100,9 @@ export function requireEraProjectEntry(startDirectory = process.cwd()): string {
       `EraScript: no explicit .era file was provided and no era.json was found from ${resolve(startDirectory)} upward.`,
     );
   }
-  return project.entry;
+  return project;
+}
+
+export function requireEraProjectEntry(startDirectory = process.cwd()): string {
+  return requireEraProject(startDirectory).entry;
 }
