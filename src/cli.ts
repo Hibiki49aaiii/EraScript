@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import process from "node:process";
 import { compile } from "./compiler.js";
@@ -13,6 +12,7 @@ import {
   type EraDiagnostic,
 } from "./diagnostics.js";
 import { typecheck, type CheckResult } from "./typecheck.js";
+import { EraProjectConfigError, requireEraProjectEntry } from "./project.js";
 import {
   assertMultichainVerificationState,
   parseMultichainVerificationReport,
@@ -47,8 +47,8 @@ function usage(exitCode = 0): never {
 
 Usage:
   era build <file.era> [-o output.js]
-  era run <file.era> [-- <args...>]
-  era check <file.era> [--json]
+  era run [file.era] [-- <args...>]
+  era check [file.era] [--json]
   era verify <report.json> [--require STATE] [--json] [--integrity-only]
   era transpile <file.era>
   era init [directory]
@@ -78,6 +78,24 @@ AI agents should prefer structured outputs: era check <file.era> --json`);
 function requireFile(arg: string | undefined): string {
   if (!arg) usage(2);
   return resolve(arg);
+}
+
+function resolveOptionalProjectFile(arg: string | undefined): {
+  readonly file: string;
+  readonly consumed: boolean;
+} {
+  if (arg && !arg.startsWith("-")) {
+    return { file: requireFile(arg), consumed: true };
+  }
+  try {
+    return { file: requireEraProjectEntry(), consumed: false };
+  } catch (error) {
+    if (error instanceof EraProjectConfigError) {
+      console.error(error.message);
+      process.exit(2);
+    }
+    throw error;
+  }
 }
 
 function readSource(file: string): string {
@@ -143,44 +161,37 @@ function build(file: string, args: string[]): void {
   console.log(`Built ${file} -> ${output}`);
 }
 
+function runtimeLoaderBootstrap(): string {
+  const loaderUrl = new URL("./runtime-loader.js", import.meta.url).href;
+  const registerSource =
+    `import { register } from "node:module"; register(${JSON.stringify(loaderUrl)}, import.meta.url);`;
+  return `data:text/javascript,${encodeURIComponent(registerSource)}`;
+}
+
 function run(file: string, args: string[]): never {
   const source = readSource(file);
   const checked = typecheck(source, file);
   ensureChecked(checked);
-  const result = compile(source, {
-    fileName: file,
-    sourceMap: true,
-    outputFileName: "main.mjs",
-  });
-  if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
-  if (!result.sourceMap) {
-    console.error("EraScript: runtime source map was requested but the compiler did not produce one");
+
+  const separator = args.indexOf("--");
+  const childArgs = separator >= 0 ? args.slice(separator + 1) : [];
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--enable-source-maps",
+      "--import",
+      runtimeLoaderBootstrap(),
+      file,
+      ...childArgs,
+    ],
+    { stdio: "inherit" },
+  );
+
+  if (child.error) {
+    console.error(`EraScript: failed to start Node runtime: ${child.error.message}`);
     process.exit(1);
   }
-
-  const temp = mkdtempSync(join(tmpdir(), "erascript-"));
-  const output = join(temp, "main.mjs");
-  let status = 1;
-  try {
-    writeFileSync(output, result.javascript, "utf8");
-    writeFileSync(`${output}.map`, result.sourceMap, "utf8");
-
-    const separator = args.indexOf("--");
-    const childArgs = separator >= 0 ? args.slice(separator + 1) : [];
-    const child = spawnSync(
-      process.execPath,
-      ["--enable-source-maps", output, ...childArgs],
-      { stdio: "inherit" },
-    );
-    if (child.error) {
-      console.error(`EraScript: failed to start Node runtime: ${child.error.message}`);
-    } else {
-      status = child.status ?? 1;
-    }
-  } finally {
-    rmSync(temp, { recursive: true, force: true });
-  }
-  process.exit(status);
+  process.exit(child.status ?? 1);
 }
 
 function init(directory: string | undefined): void {
@@ -302,10 +313,15 @@ if (command === "-v" || command === "--version") {
 
 switch (command) {
   case "build": build(requireFile(args[1]), args.slice(2)); break;
-  case "run": run(requireFile(args[1]), args.slice(2)); break;
+  case "run": {
+    const input = resolveOptionalProjectFile(args[1]);
+    run(input.file, args.slice(input.consumed ? 2 : 1));
+    break;
+  }
   case "check": {
-    const file = requireFile(args[1]);
-    const json = args.slice(2).includes("--json");
+    const input = resolveOptionalProjectFile(args[1]);
+    const file = input.file;
+    const json = args.slice(input.consumed ? 2 : 1).includes("--json");
     const checked = typecheck(readSource(file), file);
     const diagnostics = combinedDiagnostics(checked);
     const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
