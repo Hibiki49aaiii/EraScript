@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 const WAKU_PACKAGE = "@railgun-community/waku-broadcaster-client-node";
 import { validateRailgunAddress } from "@railgun-community/wallet";
 import {
@@ -14,6 +17,14 @@ const DISCOVERY_TIMEOUT_MS = Number(
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveWakuPackage(): string {
+  const isolatedRoot = process.env.RAILGUN_WAKU_DEPS_ROOT;
+  if (!isolatedRoot) return WAKU_PACKAGE;
+
+  const resolver = createRequire(join(isolatedRoot, "package.json"));
+  return pathToFileURL(resolver.resolve(WAKU_PACKAGE)).href;
 }
 
 async function waitForBroadcaster(WakuBroadcasterClient: any): Promise<unknown> {
@@ -33,7 +44,7 @@ async function waitForBroadcaster(WakuBroadcasterClient: any): Promise<unknown> 
 }
 
 async function main(): Promise<void> {
-  const { WakuBroadcasterClient } = await import(WAKU_PACKAGE);
+  const { WakuBroadcasterClient } = await import(resolveWakuPackage());
   const statuses: string[] = [];
   const trustedFeeSigner = process.env.RAILGUN_TRUSTED_FEE_SIGNER || "";
 
