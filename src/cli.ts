@@ -12,7 +12,13 @@ import {
   type EraDiagnostic,
 } from "./diagnostics.js";
 import { typecheck, type CheckResult } from "./typecheck.js";
-import { EraProjectConfigError, requireEraProjectEntry } from "./project.js";
+import { buildEraProject, EraProjectBuildError } from "./project-build.js";
+import {
+  EraProjectConfigError,
+  requireEraProject,
+  requireEraProjectEntry,
+  type EraProject,
+} from "./project.js";
 import {
   assertMultichainVerificationState,
   parseMultichainVerificationReport,
@@ -46,7 +52,7 @@ function usage(exitCode = 0): never {
   console.log(`EraScript ${VERSION}
 
 Usage:
-  era build <file.era> [-o output.js]
+  era build [file.era] [-o output.js]
   era run [file.era] [-- <args...>]
   era check [file.era] [--json]
   era verify <report.json> [--require STATE] [--json] [--integrity-only]
@@ -89,6 +95,18 @@ function resolveOptionalProjectFile(arg: string | undefined): {
   }
   try {
     return { file: requireEraProjectEntry(), consumed: false };
+  } catch (error) {
+    if (error instanceof EraProjectConfigError) {
+      console.error(error.message);
+      process.exit(2);
+    }
+    throw error;
+  }
+}
+
+function requireProjectOrExit(): EraProject {
+  try {
+    return requireEraProject();
   } catch (error) {
     if (error instanceof EraProjectConfigError) {
       console.error(error.message);
@@ -159,6 +177,24 @@ function build(file: string, args: string[]): void {
   writeFileSync(output, result.javascript, "utf8");
   if (result.sourceMap) writeFileSync(`${output}.map`, result.sourceMap, "utf8");
   console.log(`Built ${file} -> ${output}`);
+}
+
+function buildProject(project: EraProject): void {
+  const source = readSource(project.entry);
+  const checked = typecheck(source, project.entry);
+  ensureChecked(checked);
+  try {
+    const result = buildEraProject(project);
+    console.log(
+      `Built EraScript project ${project.entry} -> ${result.entryOutput} (${result.moduleOutputs.length} modules, ${result.copiedAssets.length} copied assets)`,
+    );
+  } catch (error) {
+    if (error instanceof EraProjectBuildError) {
+      console.error(`EraScript: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
+  }
 }
 
 function runtimeLoaderBootstrap(): string {
@@ -312,7 +348,21 @@ if (command === "-v" || command === "--version") {
 }
 
 switch (command) {
-  case "build": build(requireFile(args[1]), args.slice(2)); break;
+  case "build": {
+    const buildFile = args[1];
+    if (buildFile && !buildFile.startsWith("-")) {
+      build(requireFile(buildFile), args.slice(2));
+    } else {
+      if (buildFile) {
+        console.error(
+          "EraScript: project build uses era.json outDir; build options require an explicit .era file.",
+        );
+        process.exit(2);
+      }
+      buildProject(requireProjectOrExit());
+    }
+    break;
+  }
   case "run": {
     const input = resolveOptionalProjectFile(args[1]);
     run(input.file, args.slice(input.consumed ? 2 : 1));
