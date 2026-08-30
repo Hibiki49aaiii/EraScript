@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "package.json"
+      - ".github/workflows/lock-refresh.yml"
 
 permissions:
   contents: write
@@ -15,9 +16,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Fast-forward to current main
+        run: git pull --ff-only origin main
       - run: npm install --package-lock-only --ignore-scripts
       - name: Commit generated lockfile
         run: |
