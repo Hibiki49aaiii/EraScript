@@ -21,7 +21,7 @@ function createProject(prefix: string): string {
 function runCli(
   cwd: string,
   args: readonly string[],
-): ReturnType<typeof spawnSync> {
+) {
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: "utf8",
@@ -99,6 +99,10 @@ test("era run preserves relative JavaScript and bare npm package resolution", ()
     const helper = join(directory, "helper.mjs");
     const main = join(directory, "main.era");
     writeFileSync(helper, 'export const localValue = "local-ok"\n');
+    writeFileSync(
+      join(directory, "helper.d.mts"),
+      "export declare const localValue: string\n",
+    );
     writeFileSync(
       main,
       [
