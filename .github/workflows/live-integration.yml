@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - "test/live/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/live-integration.yml"
   schedule:
     - cron: "17 3 * * *"
@@ -30,7 +32,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - run: node --test dist/test/live/solana-rpc.test.js
       - run: node --test dist/test/live/sui-core.test.js
@@ -43,12 +45,13 @@ jobs:
     env:
       RAILGUN_TRUSTED_FEE_SIGNER: ${{ vars.RAILGUN_TRUSTED_FEE_SIGNER }}
       RAILGUN_WAKU_DISCOVERY_TIMEOUT_MS: "90000"
+      RAILGUN_WAKU_DEPS_ROOT: ${{ github.workspace }}/test/live/waku-deps
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - run: npm install --no-save @railgun-community/waku-broadcaster-client-node@9.1.1
+      - run: npm ci
+      - run: npm ci --prefix test/live/waku-deps
       - run: npm run build
       - run: node dist/test/live/railgun-waku.live.js
