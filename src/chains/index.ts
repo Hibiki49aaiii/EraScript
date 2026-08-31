@@ -6,7 +6,19 @@ export * from "./evm-provider-routing.js";
 export * from "./evm-execution-quorum.js";
 export * from "./evm-viem-bridge.js";
 export * from "./external-signer.js";
-export * from "./verification.js";
+export {
+  assertMultichainVerificationState,
+  multichainEvidenceRef,
+  multichainVerificationReportHash,
+  parseMultichainVerificationReport,
+} from "./verification.js";
+export type {
+  MultichainEvidenceRef,
+  MultichainVerificationCheck,
+  MultichainVerificationReport,
+  MultichainVerificationState,
+  MultichainVerificationStatus,
+} from "./verification.js";
 export * from "./verification-adapters.js";
 export * from "./rollup-finality.js";
 export * from "./op-stack-finality.js";

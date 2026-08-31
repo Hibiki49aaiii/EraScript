@@ -33,6 +33,7 @@ Design/implementation documents:
 - [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
 - [`docs/V016_IMPLEMENTATION.md`](docs/V016_IMPLEMENTATION.md)
 - [`docs/V017_IMPLEMENTATION.md`](docs/V017_IMPLEMENTATION.md)
+- [`docs/V018_IMPLEMENTATION.md`](docs/V018_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -549,6 +550,13 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] malformed/wrong-key/report-substitution/time/signature adversarial tests
 - [x] final Core CI run 33391987524: 224/224 passed / Issue #16 Post-Implementation Review approved
 
+### v0.18 — terminal verification construction boundary
+- [x] low-level arbitrary-state report constructor removed from root and `./chains` public barrels
+- [x] safe report types, evidence/hash, parser and state assertion APIs preserved
+- [x] internal family-specific strict adapters preserved
+- [x] runtime and generated-declaration public API regression tests
+- [ ] final Core CI evidence / Issue #18 closure
+
 ## Design documents
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
@@ -569,6 +577,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
 - [`docs/V016_IMPLEMENTATION.md`](docs/V016_IMPLEMENTATION.md)
 - [`docs/V017_IMPLEMENTATION.md`](docs/V017_IMPLEMENTATION.md)
+- [`docs/V018_IMPLEMENTATION.md`](docs/V018_IMPLEMENTATION.md)
 
 ## Status
 

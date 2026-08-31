@@ -1,6 +1,6 @@
 {
   "name": "erascript-lang",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "EraScript — an AI-first, Node.js/TypeScript-compatible language for safer multi-chain Web3 automation.",
   "type": "module",
   "license": "MIT",

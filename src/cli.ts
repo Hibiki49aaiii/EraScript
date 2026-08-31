@@ -36,7 +36,7 @@ import {
   type VerificationReportAuthentication,
 } from "./verification-attestation.js";
 
-const VERSION = "0.17.0";
+const VERSION = "0.18.0";
 const RESCUE_STATES = new Set<RescueVerificationState>([
   "NOT_READY",
   "READY_FOR_BROADCAST",

@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { SolanaMainnetProfile, createMultichainVerificationReport } from "../src/chains/index.js";
+import { SolanaMainnetProfile } from "../src/chains/index.js";
+import { createMultichainVerificationReport } from "../src/chains/verification.js";
 import { createVerificationReportAttestation } from "../src/verification-attestation.js";
 
 const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));

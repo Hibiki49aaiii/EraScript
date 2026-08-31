@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { SolanaMainnetProfile, createMultichainVerificationReport, type MultichainVerificationState } from "../src/chains/index.js";
+import { SolanaMainnetProfile, type MultichainVerificationState } from "../src/chains/index.js";
+import { createMultichainVerificationReport } from "../src/chains/verification.js";
 
 const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 
