@@ -1,8 +1,8 @@
 # Issue #18 Post-Implementation Review
 
-Status: **APPROVED FOR CI / FINAL CI EVIDENCE PENDING**
+Status: **APPROVED / COMPLETE**
 
-Reviewed on branch `issue-18-public-verification-api` against base commit `6c2c733afd1f5d259e33f5b32a9d096e55e8b813`.
+Reviewed on branch `issue-18-public-verification-api` against base commit `6c2c733afd1f5d259e33f5b32a9d096e55e8b813`; merged by PR #19 at `f015ad1d7f0b82023495e545e2a61d4dbb98ad39`.
 
 ## Correctness
 
@@ -18,7 +18,7 @@ Reviewed on branch `issue-18-public-verification-api` against base commit `6c2c7
 - Node 22 multichain verification tests: 3/3 pass.
 - Node 22 multichain/attestation CLI tests: 5/5 pass.
 - Local full Windows run: 226 tests, 224 pass, 2 fail only in the same pre-existing Windows path-normalization assertions recorded by Issue #16.
-- Linux Core CI remains the authoritative complete gate and is pending.
+- Linux Core CI run `33394469400`: 226/226 pass with 0 failures.
 
 ## Architecture
 
@@ -57,7 +57,16 @@ Reviewed on branch `issue-18-public-verification-api` against base commit `6c2c7
 - `npm run test:core` on Windows - 224/226 pass; same 2 pre-existing path assertions fail.
 - `npm audit --omit=dev --audit-level=high` - pass, 0 vulnerabilities.
 
-## Remaining Before Closure
+## Final CI Evidence
 
-- Push branch and obtain Linux Core CI and Dependency Audit success.
-- Update Issue #18 with actual evidence and merge through PR.
+- Core CI run `33394469400`: success, 226/226 tests passed.
+- Dependency Audit run `33394469357`: success, 0 production vulnerabilities; root development/test evidence 67 and isolated Waku evidence 71.
+- Read-only Live Network Integration run `33394469380`: success, Solana/Sui/Jito 3/3.
+- PR #19 merged and Issue #18 closed on 2026-08-31.
+
+## Residual Risk
+
+- The compiled internal constructor file can remain in the package tarball until production-only package-content enforcement is implemented.
+- Direct source-tree imports are repository-internal discipline, not a JavaScript security boundary.
+- Windows still has two pre-existing path-normalization test failures; Linux qualification is complete.
+- GitHub Actions v4 steps emit Node 20 action-runtime deprecation warnings and require a dedicated workflow-hardening Issue under #15.

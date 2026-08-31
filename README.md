@@ -555,7 +555,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] safe report types, evidence/hash, parser and state assertion APIs preserved
 - [x] internal family-specific strict adapters preserved
 - [x] runtime and generated-declaration public API regression tests
-- [ ] final Core CI evidence / Issue #18 closure
+- [x] final Core CI run 33394469400: 226/226 passed / Issue #18 closure
 
 ## Design documents
 
@@ -580,6 +580,8 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V018_IMPLEMENTATION.md`](docs/V018_IMPLEMENTATION.md)
 
 ## Status
+
+EraScript v0.18.0 public verification-construction boundary is verified at merge commit `f015ad1d7f0b82023495e545e2a61d4dbb98ad39`. Core CI run **33394469400** passed `npm ci`, `npm run check`, and `npm run test:core` on Node 22 with **226/226 tests passed and 0 failures**. Dependency Audit run **33394469357** passed its production high/critical gate with **0 production vulnerabilities** while separately retaining evidence for 67 root development/test and 71 isolated Waku vulnerabilities. Read-only Live Network Integration run **33394469380** passed the Solana, Sui, and Jito checks (**3/3**). Issue #18 is closed and PR #19 is merged; the generic arbitrary-state report constructor is no longer exported from the supported root or `./chains` API.
 
 EraScript v0.16.0 multi-file project build is verified at code baseline `61f6a0127421cbff8dcbf4660c1b87f774a864b5`. Core CI run **430** passed `npm ci`, `npm run check`, and `npm run test:core` on Node 22 with **216/216 tests passed and 0 failures**. `era build` without an explicit file now consumes `era.json`, emits each reachable explicit relative EraScript module as project-relative `.mjs` plus a composed source map, rewrites `.era` specifiers to equal-length `.mjs`, copies directly referenced local runtime assets, preserves bare npm imports, rejects project-root escapes, and retains the legacy explicit single-file build path. Post-Implementation Review is approved in `docs/ai/issues/13/POST_IMPLEMENTATION_REVIEW.md`.
 
