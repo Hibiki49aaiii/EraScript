@@ -30,8 +30,13 @@ import {
   parseVerificationReportJson,
 } from "./web3/verification-io.js";
 import type { RescueVerificationReport, RescueVerificationState } from "./web3/verification.js";
+import {
+  parseVerificationReportAttestationJson,
+  verifyVerificationReportAttestation,
+  type VerificationReportAuthentication,
+} from "./verification-attestation.js";
 
-const VERSION = "0.16.0";
+const VERSION = "0.17.0";
 const RESCUE_STATES = new Set<RescueVerificationState>([
   "NOT_READY",
   "READY_FOR_BROADCAST",
@@ -56,6 +61,7 @@ Usage:
   era run [file.era] [-- <args...>]
   era check [file.era] [--json]
   era verify <report.json> [--require STATE] [--json] [--integrity-only]
+             [--attestation FILE --trusted-key PUBLIC_KEY.pem]
   era transpile <file.era>
   era init [directory]
   era --version
@@ -75,6 +81,8 @@ Multichain verification states:
 By default, 'era verify' requires READY_FOR_BROADCAST for rescue reports
 and READY_FOR_SUBMISSION for multichain reports.
 Use --integrity-only only when you intentionally want hash/schema validation without an execution-readiness gate.
+Report hashes prove content integrity, not issuer authenticity. Supply both --attestation and --trusted-key
+to authenticate a detached Ed25519 attestation from an explicitly trusted public key.
 
 EraScript is Node.js/TypeScript compatible and adds AI-first multi-chain Web3 safety checks.
 AI agents should prefer structured outputs: era check <file.era> --json`);
@@ -269,6 +277,22 @@ function unsafeBoundaryCount(report: CliVerificationReport): number {
   return "unsafeBoundaries" in report && Array.isArray(report.unsafeBoundaries) ? report.unsafeBoundaries.length : 0;
 }
 
+function verificationOption(args: string[], name: "--attestation" | "--trusted-key"): string | undefined {
+  const indexes = args.flatMap((value, index) => value === name ? [index] : []);
+  if (indexes.length > 1) {
+    console.error(`EraScript: ${name} may be specified only once`);
+    process.exit(2);
+  }
+  const index = indexes[0];
+  if (index === undefined) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith("-")) {
+    console.error(`EraScript: ${name} requires a file path`);
+    process.exit(2);
+  }
+  return resolve(value);
+}
+
 function verifyReport(file: string, args: string[]): never {
   if (extname(file) !== ".json") {
     console.error(`EraScript: era verify expects a .json verification report, got ${file}`);
@@ -276,6 +300,12 @@ function verifyReport(file: string, args: string[]): never {
   }
   const json = args.includes("--json");
   const integrityOnly = args.includes("--integrity-only");
+  const attestationFile = verificationOption(args, "--attestation");
+  const trustedKeyFile = verificationOption(args, "--trusted-key");
+  if ((attestationFile === undefined) !== (trustedKeyFile === undefined)) {
+    console.error("EraScript: --attestation and --trusted-key must be supplied together");
+    process.exit(2);
+  }
   const text = readFileSync(file, "utf8");
   let raw: unknown;
   try { raw = JSON.parse(text) as unknown; }
@@ -286,6 +316,7 @@ function verifyReport(file: string, args: string[]): never {
   const kind = verificationKind(raw);
   let report: CliVerificationReport;
   let required: RescueVerificationState | MultichainVerificationState | null = null;
+  let authentication: VerificationReportAuthentication | null = null;
   try {
     if (kind === "rescue") {
       const rescue = parseVerificationReportJson(text);
@@ -297,6 +328,14 @@ function verifyReport(file: string, args: string[]): never {
       required = integrityOnly ? null : requiredVerificationState(args, "multichain");
       if (required) assertMultichainVerificationState(multichain, required as MultichainVerificationState);
       report = multichain;
+    }
+    if (attestationFile && trustedKeyFile) {
+      const attestation = parseVerificationReportAttestationJson(readFileSync(attestationFile, "utf8"));
+      authentication = verifyVerificationReportAttestation({
+        attestation,
+        report,
+        trustedPublicKey: readFileSync(trustedKeyFile),
+      });
     }
   } catch (error) {
     if (error instanceof EraDiagnosticError) failEra(error, json, { file, kind });
@@ -310,8 +349,12 @@ function verifyReport(file: string, args: string[]): never {
       file,
       state: report.state,
       reportHash: report.reportHash,
+      integrity: true,
+      stateRequirementMet: required === null ? null : true,
+      authenticated: authentication !== null,
       integrityOnly,
       required,
+      attestation: authentication,
       checks: report.checks,
       unsafeBoundaries: "unsafeBoundaries" in report ? report.unsafeBoundaries ?? [] : [],
       ...(kind === "multichain" ? {
@@ -323,9 +366,9 @@ function verifyReport(file: string, args: string[]): never {
       } : {}),
     }, null, 2));
   } else {
-    console.log(`VERIFIED ${file}`);
+    console.log(authentication ? `AUTHENTICATED REPORT ${file}` : `INTEGRITY OK (UNAUTHENTICATED) ${file}`);
     console.log(`Kind: ${kind}`);
-    console.log(`State: ${report.state}`);
+    console.log(`Claimed state: ${report.state}`);
     console.log(`Report hash: ${report.reportHash}`);
     if (kind === "rescue") console.log(`Unsafe boundaries: ${unsafeBoundaryCount(report)}`);
     else {
@@ -334,7 +377,10 @@ function verifyReport(file: string, args: string[]): never {
       console.log(`Backend: ${multichain.backend}`);
       console.log(`Evidence refs: ${multichain.evidence.length}`);
     }
-    console.log(integrityOnly ? "Gate: integrity only" : `Gate: ${required} or stronger`);
+    console.log(integrityOnly ? "Claimed-state gate: not evaluated" : `Claimed-state gate: ${required} or stronger`);
+    console.log(authentication
+      ? `Authentication: Ed25519 issuer ${authentication.issuer} (${authentication.keyId}), valid until ${authentication.expiresAt}`
+      : "Authentication: not provided; report state is an unauthenticated claim");
   }
   process.exit(0);
 }

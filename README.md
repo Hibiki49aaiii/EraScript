@@ -32,6 +32,7 @@ Design/implementation documents:
 - [`docs/V014_IMPLEMENTATION.md`](docs/V014_IMPLEMENTATION.md)
 - [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
 - [`docs/V016_IMPLEMENTATION.md`](docs/V016_IMPLEMENTATION.md)
+- [`docs/V017_IMPLEMENTATION.md`](docs/V017_IMPLEMENTATION.md)
 
 ## Multi-chain model
 
@@ -262,6 +263,16 @@ VERIFIED_FINALITY
 
 A multichain report binds chain family, profile, network, execution backend, optional overlay, subject, checks, evidence hashes and state into a deterministic SHA-256 `reportHash`.
 
+`reportHash` is an integrity fingerprint, not a signature. It can detect report content changed after hashing, but it does not identify who created the report and does not make self-authored evidence trustworthy. EraScript therefore keeps three results separate:
+
+```text
+integrity             report schema/content matches reportHash
+claimed state gate    report claims the requested state or stronger
+authentication        detached attestation verifies under an explicitly trusted key
+```
+
+Both rescue and multichain reports can be authenticated with a detached, versioned Ed25519 attestation. The attestation binds the exact report kind/hash, issuer, trusted-key fingerprint, issuance/expiry timestamps and nonce. `era verify` never generates or loads a private key; it accepts only an attestation and an explicitly supplied trusted public key:
+
 `era verify` auto-detects both report formats:
 
 ```bash
@@ -269,7 +280,12 @@ era verify rescue-report.json --require VERIFIED_RECOVERY
 era verify solana-report.json --require VERIFIED_FINALITY
 era verify sui-report.json --require VERIFIED_FINALITY
 era verify report.json --integrity-only
+era verify report.json --require VERIFIED_FINALITY \
+  --attestation report.attestation.json \
+  --trusted-key verifier-public.pem
 ```
+
+Unsigned reports remain usable for integrity and claimed-state inspection, but human output labels them `INTEGRITY OK (UNAUTHENTICATED)`. A valid attestation proves that the holder of the trusted Ed25519 key signed the exact report reference; it does not independently prove that an RPC provider or external evidence source told the truth. Offline verification also does not provide key revocation or one-time nonce consumption.
 
 ## AI agent workflow
 
@@ -303,6 +319,7 @@ era check app.era
 era check --json           # uses era.json entry
 era verify report.json
 era verify report.json --require VERIFIED_FINALITY --json
+era verify report.json --attestation report.attestation.json --trusted-key verifier-public.pem --json
 era transpile app.era
 era init my-app
 era --version
@@ -523,6 +540,15 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] final Core CI run 430: 216/216 passed
 - [x] Issue #13 Post-Implementation Review approved
 
+### v0.17 — authenticated verification reports
+- [x] detached, versioned Ed25519 attestation shared by rescue and multichain reports
+- [x] domain-separated report kind/hash, issuer, key ID, validity-window and nonce binding
+- [x] explicit trusted-public-key verification with no CLI private-key handling
+- [x] integrity, claimed-state gate and authentication reported separately
+- [x] unsigned human output marked unauthenticated
+- [x] malformed/wrong-key/report-substitution/time/signature adversarial tests
+- [x] final Core CI run 33391987524: 224/224 passed / Issue #16 Post-Implementation Review approved
+
 ## Design documents
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
@@ -542,6 +568,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [`docs/V014_IMPLEMENTATION.md`](docs/V014_IMPLEMENTATION.md)
 - [`docs/V015_IMPLEMENTATION.md`](docs/V015_IMPLEMENTATION.md)
 - [`docs/V016_IMPLEMENTATION.md`](docs/V016_IMPLEMENTATION.md)
+- [`docs/V017_IMPLEMENTATION.md`](docs/V017_IMPLEMENTATION.md)
 
 ## Status
 
