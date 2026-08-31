@@ -547,7 +547,7 @@ The Solana/Sui/RAILGUN integrations are structural adapters, so these SDK packag
 - [x] integrity, claimed-state gate and authentication reported separately
 - [x] unsigned human output marked unauthenticated
 - [x] malformed/wrong-key/report-substitution/time/signature adversarial tests
-- [ ] final Core CI evidence / Issue #16 closure
+- [x] final Core CI run 33391987524: 224/224 passed / Issue #16 Post-Implementation Review approved
 
 ## Design documents
 

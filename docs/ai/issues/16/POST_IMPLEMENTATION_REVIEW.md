@@ -1,6 +1,6 @@
 # Issue #16 Post-Implementation Review
 
-Status: **APPROVED FOR CI / FINAL CI EVIDENCE PENDING**
+Status: **APPROVED / COMPLETE**
 
 Reviewed on branch `issue-16-authenticated-verification` against base commit `9b8de65ca2c69208c3a8e0db17a5326648d917ff`.
 
@@ -20,7 +20,7 @@ Reviewed on branch `issue-16-authenticated-verification` against base commit `9b
 - The complete local Windows run executed 224 tests: 222 passed and 2 existing Windows path-normalization assertions failed. Both failures reproduce individually and no changed file participates in those paths:
   - `frontend-diagnostics-map.test`: forward-slash diagnostic path versus native backslash expectation.
   - `project-runtime.test`: imported diagnostic lookup compares TypeScript-normalized and native Windows paths.
-- Linux Core CI remains the authoritative full-suite environment and is pending.
+- Linux Core CI run `33391987524` passed 224/224 tests with 0 failures, confirming the Windows-only path assertion diagnosis.
 
 ## Architecture
 
@@ -63,8 +63,19 @@ Reviewed on branch `issue-16-authenticated-verification` against base commit `9b
 - `npm audit --omit=dev --audit-level=high` - pass, 0 vulnerabilities.
 - `git diff --check` - pass; only Git line-ending conversion warnings.
 
-## Remaining Before Closure
+## CI Evidence
 
-- Push branch and obtain successful Linux Core CI evidence.
-- Update Issue #16 implementation checklist/results.
-- Record final CI run and close Issue #16.
+- Core CI run `33391987524` - success.
+  - `npm ci` - pass.
+  - `npm run check` - pass.
+  - `npm run test:core` - 224 tests, 224 pass, 0 fail.
+- Dependency Audit run `33391987552` - success, 3/3 jobs.
+  - production audit - 0 vulnerabilities.
+  - root dev/test evidence - 67 total (16 low, 34 moderate, 14 high, 3 critical).
+  - isolated Waku evidence - 71 total (16 low, 37 moderate, 15 high, 3 critical).
+
+## Remaining Issues
+
+- Public terminal-state constructor restriction remains a separate P0 roadmap item.
+- Offline key revocation, transparency, and nonce-consumption tracking remain outside Issue #16.
+- Existing Windows path-normalization test portability should be handled in a separate Issue; Linux CI is green.

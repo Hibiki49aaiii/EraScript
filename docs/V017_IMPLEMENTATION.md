@@ -80,3 +80,5 @@ Offline verification also does not provide key revocation or one-time nonce cons
 - Human CLI success wording intentionally changes to remove an unauthenticated bare `VERIFIED` claim.
 
 Issue #16 contains the implementation plan, human understanding summary, review record, and verification evidence.
+
+Final implementation baseline `0583d8ee96aaf2f371a6c38bfd8996a4dfb6e3a6` passed Core CI run `33391987524` on Node 22 with 224/224 tests and 0 failures. Dependency Audit run `33391987552` also passed all three jobs; the production graph reported 0 vulnerabilities while known root dev/test and isolated Waku findings remained separate evidence-only boundaries.
