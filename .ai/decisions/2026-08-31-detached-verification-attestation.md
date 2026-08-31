@@ -36,7 +36,7 @@ Use one versioned detached Ed25519 attestation for both report kinds. Bind the e
 - Unsigned reports are labeled unauthenticated.
 - CLI verification never reads a private key.
 - A future trust service can add revocation/transparency without changing report hashes.
-- Terminal-state constructor restrictions remain a separate API-surface decision.
+- As of v0.18 / Issue #18, the arbitrary-state constructor is excluded from supported root and `./chains` package barrels while remaining an internal adapter implementation detail.
 
 ## Revisit when
 
@@ -50,3 +50,4 @@ Use one versioned detached Ed25519 attestation for both report kinds. Bind the e
 - `test/verification-attestation.test.ts`
 - `test/cli-verification-attestation.test.ts`
 - GitHub Issue #16
+- GitHub Issue #18

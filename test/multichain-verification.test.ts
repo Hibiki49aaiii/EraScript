@@ -5,11 +5,11 @@ import {
   SolanaMainnetProfile,
   assertMultichainVerificationState,
   createMultichainSigningRequest,
-  createMultichainVerificationReport,
   multichainEvidenceRef,
   parseMultichainVerificationReport,
   signWithMultichainExternalSigner,
 } from "../src/chains/index.js";
+import { createMultichainVerificationReport } from "../src/chains/verification.js";
 
 const SIGNER = "11111111111111111111111111111111";
 
