@@ -256,3 +256,12 @@ After the Issue has been updated, report the completed work using this structure
 - **Human Understanding** — short explanation of how the feature/process works
 
 The final report must agree with the Issue, current code/tests, and actual verification evidence.
+
+<!-- BEGIN CODEX EXTERNAL INTELLIGENCE -->
+## External Intelligence
+
+- At task start, read .ai/index.md, search .ai/ with task-relevant keywords, and load only relevant entries.
+- Validate stored knowledge against current code, tests, reproduction, and primary specifications; current evidence wins.
+- At task end, save only future decision-changing, evidence-backed knowledge. Search before writing, avoid duplicates and secrets, and use Case -> Observation -> Candidate Rule -> Validated Rule promotion.
+- Keep the user's requested deliverable, correctness, security, and verification ahead of knowledge maintenance.
+<!-- END CODEX EXTERNAL INTELLIGENCE -->
