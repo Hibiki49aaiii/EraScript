@@ -25,6 +25,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
-      - run: npm run check
-      - run: npm run test:core
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run check
+      - name: Core tests
+        run: npm run test:core
+      - name: Core tests with forced parent color
+        run: npm run test:core
+        env:
+          FORCE_COLOR: "1"
+      - name: Installed package smoke and content gate
+        run: npm run test:package

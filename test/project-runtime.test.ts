@@ -14,6 +14,15 @@ import { typecheck } from "../src/typecheck.js";
 const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const compiledTestDirectory = dirname(fileURLToPath(import.meta.url));
 
+function deterministicChildEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    NO_COLOR: "1",
+    FORCE_COLOR: "0",
+    TERM: "dumb",
+  };
+}
+
 function createProject(prefix: string): string {
   return mkdtempSync(join(compiledTestDirectory, prefix));
 }
@@ -25,6 +34,7 @@ function runCli(
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: "utf8",
+    env: deterministicChildEnv(),
   });
 }
 
