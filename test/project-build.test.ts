@@ -15,6 +15,15 @@ import test from "node:test";
 const cli = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 const compiledTestDirectory = dirname(fileURLToPath(import.meta.url));
 
+function deterministicChildEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    NO_COLOR: "1",
+    FORCE_COLOR: "0",
+    TERM: "dumb",
+  };
+}
+
 function createWorkspace(prefix: string): string {
   return mkdtempSync(join(compiledTestDirectory, prefix));
 }
@@ -23,6 +32,7 @@ function runCli(cwd: string, args: readonly string[]) {
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: "utf8",
+    env: deterministicChildEnv(),
   });
 }
 
@@ -30,7 +40,11 @@ function runNode(cwd: string, file: string) {
   return spawnSync(
     process.execPath,
     ["--enable-source-maps", file],
-    { cwd, encoding: "utf8" },
+    {
+      cwd,
+      encoding: "utf8",
+      env: deterministicChildEnv(),
+    },
   );
 }
 
