@@ -1,6 +1,6 @@
 # Issue #20 Post-Implementation Review
 
-Status: **APPROVED FOR MERGE**
+Status: **APPROVED — MERGED AND VERIFIED ON MAIN**
 
 Issue: #20
 
@@ -8,7 +8,7 @@ Pull Request: #21
 
 Base Commit SHA: `2bf73fe79eda59f9bef44ad821fe3cb9b21783cd`
 
-Reviewed branch head: `b8a8a6819600c11accd34a004d846da41188c7a6`
+Merged main commit: `ba4930550ebeeeebb18e1a4001239db083a9c43c`
 
 ## Scope Reviewed
 
@@ -21,16 +21,11 @@ Reviewed branch head: `b8a8a6819600c11accd34a004d846da41188c7a6`
 
 ### 1. Color-sensitive test failures — CONFIRMED
 
-`test/project-build.test.ts` and `test/project-runtime.test.ts` spawned Node/CLI children without an explicit `env`. Therefore the children inherited parent terminal variables such as `FORCE_COLOR`, `NO_COLOR`, and `TERM`.
+`test/project-build.test.ts` and `test/project-runtime.test.ts` spawned Node/CLI children without an explicit `env`. Therefore children inherited parent terminal variables such as `FORCE_COLOR`, `NO_COLOR`, and `TERM`.
 
-Those tests also make exact assertions over captured stdout/stderr, including:
+Those tests make exact raw assertions over captured stdout/stderr, including primitive boolean output such as `true` and source-mapped stack frame path/line substrings. With color forced in the parent environment, Node can ANSI-decorate primitive `console.log` output and stack rendering. The raw captured bytes change even though EraScript semantics do not.
 
-- primitive boolean output such as `true`, and
-- source-mapped stack frame path/line substrings.
-
-With color forced in the parent environment, Node can ANSI-decorate primitive `console.log` output and stack rendering. That changes the raw captured bytes without changing EraScript semantics.
-
-Conclusion: the reported 4-test failure pattern is a **test harness determinism defect**, not an EraScript runtime/module/source-map correctness regression.
+Conclusion: the reported four-test failure pattern was a **test harness determinism defect**, not an EraScript runtime/module/source-map correctness regression.
 
 ### 2. `dist/test/**` npm payload contamination — CONFIRMED
 
@@ -42,7 +37,7 @@ outDir: dist
 include: src/**/*.ts, test/**/*.ts
 ```
 
-so a real build emits both:
+so a real development build emits both:
 
 ```text
 dist/src/**
@@ -57,7 +52,7 @@ The pre-fix package allowlist was:
 
 Therefore compiled tests were publishable after a real build.
 
-Conclusion: the contamination is caused by the **combination of the development build layout and an overly broad npm `files` allowlist**.
+Conclusion: the contamination was caused by the **combination of the development build layout and an overly broad npm `files` allowlist**.
 
 ## Implementation Review
 
@@ -71,7 +66,7 @@ FORCE_COLOR=0
 TERM=dumb
 ```
 
-for their spawned test children.
+for spawned test children.
 
 Production CLI/runtime code is unchanged.
 
@@ -83,7 +78,7 @@ Production CLI/runtime code is unchanged.
 "files": ["dist/src", "README.md", "LICENSE"]
 ```
 
-The development build remains unchanged and can still emit `dist/test/**` for `node:test`; npm packaging is constrained separately.
+The development build can still emit `dist/test/**` for `node:test`; npm packaging is constrained independently to the supported runtime/declaration subtree.
 
 ### Package smoke/content gate — PASS
 
@@ -91,14 +86,14 @@ The development build remains unchanged and can still emit `dist/test/**` for `n
 
 It:
 
-1. packs the current built package with `npm pack --json`,
-2. validates required and forbidden paths,
-3. installs the local tarball into a fresh temporary fixture,
+1. packs the built package with `npm pack --json`,
+2. validates required and forbidden package paths,
+3. installs the local tarball into a fresh temporary project,
 4. validates root and subpath imports,
 5. validates installed CLI behavior,
-6. validates `era run` can load `dist/src/runtime-loader.js`,
-7. validates project build and execution,
-8. removes temporary artifacts in `finally`.
+6. validates `era run` can resolve the packaged `dist/src/runtime-loader.js`,
+7. validates `era build` and execution of built output,
+8. cleans temporary artifacts in `finally`.
 
 ### CI regression gates — PASS
 
@@ -110,15 +105,37 @@ Core CI now runs:
 - full Core suite with parent `FORCE_COLOR=1`,
 - installed-package smoke/content gate.
 
-This makes both defects continuously testable rather than relying on one-time local inspection.
+This turns both reported defects into permanent regression gates.
 
-## Verification Evidence
+## Pull Request Verification
 
-### Pull Request Core CI
+PR #21 was verified at latest PR head before merge.
 
-Run: **Core CI #443**
+### Core CI #444
 
-Run ID: `34189949945`
+Run ID: `34190336378`
+
+Result: **SUCCESS**
+
+All steps passed, including normal Core tests, forced-color Core tests, and installed package smoke.
+
+### Dependency Audit #10
+
+Run ID: `34190336352`
+
+Result: **SUCCESS**
+
+All production/dev/Waku evidence jobs passed.
+
+## Final Main Verification
+
+Main commit:
+
+`ba4930550ebeeeebb18e1a4001239db083a9c43c`
+
+### Core CI #445
+
+Run ID: `34190609413`
 
 Environment:
 
@@ -153,7 +170,7 @@ pass: 226
 fail: 0
 ```
 
-Package smoke result:
+Installed package smoke:
 
 ```json
 {
@@ -167,15 +184,13 @@ Package smoke result:
 }
 ```
 
-The smoke script additionally asserts that `dist/src/cli.js` and `dist/src/runtime-loader.js` are in the tarball.
+The content gate separately asserts `dist/src/cli.js` and `dist/src/runtime-loader.js` are packaged and no `dist/test/**` path is packaged.
 
-### Dependency Audit
+### Dependency Audit #11
 
-Run: **Dependency Audit #9**
+Run ID: `34190609180`
 
-Run ID: `34189949941`
-
-All three jobs passed.
+Result: **SUCCESS** — all three jobs passed.
 
 Production high/critical gate:
 
@@ -185,26 +200,35 @@ npm audit --omit=dev --audit-level=high: PASS
 found 0 vulnerabilities
 ```
 
-The full maintainer/dev graph still reports known upstream RAILGUN-related advisories; Issue #20 does not conflate that graph with the published production dependency boundary.
+The full maintainer/dev graph still contains the documented upstream RAILGUN-related advisories. They remain separate from the published production dependency boundary.
+
+### Live Network Integration #24
+
+Run ID: `34190609438`
+
+Result: **SUCCESS**.
+
+Both read-only jobs passed:
+
+- Solana RPC / Sui Core API / Jito public-readonly smoke
+- isolated RAILGUN/Waku discovery smoke
+
+No transaction, proof, signing, bundle submission, or broadcast behavior was introduced by Issue #20.
 
 ## Correctness — PASS
 
-No EraScript runtime/compiler/module semantics changed.
-
-The reported local failures are fixed at the test boundary and verified under their actual triggering condition.
+No EraScript runtime/compiler/module semantics changed. The reported local failures were fixed at the test boundary and verified under their actual triggering condition.
 
 ## Regression — PASS
 
-Both the normal and forced-color 226-test suites pass.
-
-Package behavior is tested from an installed tarball, not only from the repository source tree.
+Both normal and forced-color 226-test suites pass on main. Package behavior is verified from an installed tarball rather than only from the repository source tree.
 
 ## Architecture — PASS
 
-The chosen fixes are narrower than introducing a second production tsconfig or global ANSI normalization:
+The selected fixes are narrower than a second production tsconfig or global ANSI normalization:
 
 - test-only environment control for test determinism,
-- npm allowlist for package boundary,
+- npm allowlist for publish boundary,
 - Node package smoke for release qualification.
 
 ## Security — PASS
@@ -220,18 +244,16 @@ The narrower package allowlist reduces accidental publication of internal compil
 
 ## Maintainability — PASS
 
-The new `test:package` script makes package content and installed behavior a repeatable invariant.
+The new `test:package` script makes package content and installed behavior a repeatable invariant. The forced-parent-color CI step prevents silent reintroduction of the same environment sensitivity.
 
-The color regression has a dedicated forced-parent-color CI step, so future changes cannot silently reintroduce the same environment sensitivity.
+## Residual / Out-of-Scope Observation
 
-## Out-of-Scope Observation
+GitHub Actions logs warn that `actions/checkout@v4` and `actions/setup-node@v4` target the deprecated Node 20 action runtime and are being forced by GitHub runners onto Node 24.
 
-GitHub Actions logs now warn that `actions/checkout@v4` and `actions/setup-node@v4` target deprecated Node 20 action runtimes and are being forced to Node 24 by GitHub runners.
-
-This is pre-existing CI infrastructure debt and is **not** caused by Issue #20. It should be handled as a separate Issue #15 workstream after checking current official action majors/SHAs.
+This is pre-existing CI infrastructure debt, not an Issue #20 regression. It belongs to the separate Issue #15 Actions-hardening workstream after checking current official action majors and immutable SHAs.
 
 ## Decision
 
-**APPROVED FOR MERGE.**
+**APPROVED — COMPLETE.**
 
-Issue #20 acceptance criteria are satisfied at the PR verification level. After merge, re-run/confirm the same Core CI and production dependency gate on `main`, then close Issue #20 and update umbrella Issue #15 progress.
+Issue #20 is merged, verified on `main`, and may remain closed as completed. The broader Issue #15 roadmap remains open.
