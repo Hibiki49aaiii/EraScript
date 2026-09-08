@@ -32,7 +32,7 @@
     "era": "./dist/src/cli.js"
   },
   "files": [
-    "dist",
+    "dist/src",
     "README.md",
     "LICENSE"
   ],
@@ -42,7 +42,8 @@
     "test": "npm run test:core",
     "dev": "node --enable-source-maps dist/src/cli.js",
     "test:core": "npm run build && node --test dist/test/*.test.js",
-    "test:live": "npm run build && node --test dist/test/live/*.test.js"
+    "test:live": "npm run build && node --test dist/test/live/*.test.js",
+    "test:package": "npm run build && node scripts/package-smoke.mjs"
   },
   "dependencies": {
     "typescript": "^5.9.2",
