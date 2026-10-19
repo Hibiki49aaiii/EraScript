@@ -1,8 +1,8 @@
 # Issue #25 — IMPLEMENTATION_PLAN (design stage)
 
-**Issue:** [#25](https://github.com/Hibiki49aaiii/EraScript/issues/25) · Parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15) · Trust contract [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22) ([draft PR #23](https://github.com/Hibiki49aaiii/EraScript/pull/23))  
-**Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` (`main`, `erascript-lang@0.18.0`).  
-**Planning branch:** `issue-25-rescue-evidence-design` · **Change classification:** Design documentation only.  
+**Issue:** [#25](https://github.com/Hibiki49aaiii/EraScript/issues/25) · Parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15) · Trust contract [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22) ([draft PR #23](https://github.com/Hibiki49aaiii/EraScript/pull/23))
+**Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` (`main`, `erascript-lang@0.18.0`).
+**Planning branch:** `issue-25-rescue-evidence-design` · **Change classification:** Design documentation only.
 **Security review gate:** **Proposed behavioral design; NOT approved for security-sensitive implementation.** See `PRE_IMPLEMENTATION_REVIEW.md` and `DECISIONS.md`.
 
 ## 1. Requirements and operating model
@@ -95,7 +95,7 @@ Observed/partial outcome OR evidence-bound VERIFIED_RECOVERY
 
 **Expected future source (not modified by planning):** `src/web3/workflow.ts`, `src/web3/verification.ts`, `src/web3/abi.ts`, `src/web3/tx.ts` (only if signed-raw binding helper is needed), `src/chains/evm-execution-quorum.ts` (read/reuse, not necessarily change), `src/web3/token.ts` only for a genuinely shared strict-positive objective type.
 
-**Expected future tests:** `test/web3-workflow.test.ts`, `test/web3-verification.test.ts`, `test/web3-abi.test.ts` if present, new targeted `test/web3-rescue-evidence.test.ts` and contract compatibility tests.
+**Expected future tests:** `test/web3-workflow.test.ts`, `test/web3-verification.test.ts`, `test/abi.test.ts`, new targeted `test/web3-rescue-evidence.test.ts` and contract compatibility tests.
 
 **Planning-only PR adds:** `docs/ai/issues/25/IMPLEMENTATION_PLAN.md`, `PRE_IMPLEMENTATION_REVIEW.md`, `HUMAN_UNDERSTANDING.md`, `TEST_MATRIX.md`, `DECISIONS.md`. No `src/**`, `test/**`, workflow, CI or dependency changes.
 
