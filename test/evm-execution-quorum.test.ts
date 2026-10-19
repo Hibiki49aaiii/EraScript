@@ -5,6 +5,7 @@ import {
   assertEvmExecutionQuorumIntegrity,
   buildEvmExecutionQuorum,
   defineEvmChainProfile,
+  evmExecutionVerificationReportWithQuorum,
   discoverEvmExecutionProvider,
   genericEvmProfile,
   observeEvmExecutionWithProvider,
@@ -338,6 +339,17 @@ test("finality quorum requires finalizedTag binding and every finalized head to 
   const promoted = promoteEvmExecutionWithQuorum(source, quorum);
   assert.equal(promoted.state, "quorum-finalized");
   assert.equal(promoted.transaction.state, "finalized");
+  const finalityReport = evmExecutionVerificationReportWithQuorum(profile, promoted.transaction, quorum);
+  assert.equal(finalityReport.state, "VERIFIED_FINALITY");
+  assert.equal(finalityReport.verifiedFinality, true);
+  assert.ok(finalityReport.checks.some((item) => item.id === "evm.quorum" && item.status === "pass"));
+  const rollupReport = evmExecutionVerificationReportWithQuorum(rollupProfile, promoted.transaction, quorum);
+  assert.equal(rollupReport.state, "EXECUTION_OBSERVED");
+  const mismatched = { ...promoted.transaction, receipt: { ...promoted.transaction.receipt, blockNumber: 101n } };
+  assert.throws(
+    () => evmExecutionVerificationReportWithQuorum(profile, mismatched, quorum),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4641",
+  );
 
   const unboundFinality = await boundProvider("provider-c");
   await assert.rejects(
