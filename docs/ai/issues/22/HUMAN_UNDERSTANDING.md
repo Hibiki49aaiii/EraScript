@@ -62,7 +62,7 @@ The verifier can inspect an unsigned report. `era verify --require ...` checks *
 
 ## Failure Modes / Residual Risk
 
-- Signed but false report; provider collusion; stale/reorged block; fabricated caller finality; incorrectly bound ERC-20 transfer; wrong or missing safe credit; stale signer response; Python/Node/SDK bypass of static diagnostics; absent RAILGUN private-state proof; compromised attester key.
+- Signed but false report; provider collusion; stale/reorged block; fabricated caller finality; incorrectly bound ERC-20 transfer; wrong or missing safe credit; stale signer response; Node/SDK bypass of static diagnostics; absent RAILGUN private-state proof; compromised attester key.
 - Current strict verification adapters mitigate several cases **only when invoked with appropriate source and policy assumptions**.
 - Offline attestation does not implement key revocation or consumed-nonce replay prevention; the operator/relying party must supply that policy.
 - The issue's **TM-01–TM-14** table maps all 14 attacks to code, existing mitigations and follow-up ownership; its negative tests are **proposed, not executed** by writing documentation.
