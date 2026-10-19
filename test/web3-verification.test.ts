@@ -108,7 +108,7 @@ test("stale Flashbots simulation keeps rescue plan NOT_READY", async () => {
   assert.ok(report.checks.some((entry) => entry.id === "atomic.bundle-fresh" && entry.status === "fail"));
 });
 
-test("recovery is observed before finality and verified only when finalized", () => {
+test("caller-reported finalized state cannot upgrade an observed recovery to VERIFIED_RECOVERY", () => {
   const workflow = workflowFixture();
   const before = balanceSnapshot({
     chain: Ethereum,
@@ -135,6 +135,8 @@ test("recovery is observed before finality and verified only when finalized", ()
   assert.equal(observed.verifiedRecovery, false);
 
   const finalized = verifyCompletedRescue({ workflow, before, after, finality: "finalized" });
-  assert.equal(finalized.state, "VERIFIED_RECOVERY");
-  assert.equal(finalized.verifiedRecovery, true);
+  assert.equal(finalized.state, "RECOVERY_OBSERVED");
+  assert.equal(finalized.verifiedRecovery, false);
+  assert.ok(finalized.checks.some((entry) => entry.id === "recovery.finality" && entry.status === "warning"));
+  assert.ok(finalized.checks.some((entry) => entry.id === "recovery.provenance" && entry.status === "warning"));
 });
