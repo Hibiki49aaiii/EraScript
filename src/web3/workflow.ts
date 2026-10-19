@@ -1,4 +1,5 @@
 import { EraDiagnosticError } from "../diagnostics.js";
+import { decodeCall } from "./abi.js";
 import { assertSameToken, sameToken, tokenAmountRaw, type TokenAmount, type TokenDefinition } from "./token.js";
 import type { SignedTx } from "./tx.js";
 import type { Address, BlockHash, EvmChain } from "./types.js";
@@ -11,6 +12,17 @@ function fail(code: string, kind: string, message: string, details?: Record<stri
 function sameAddress(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
+
+const ERC20_TRANSFER_ABI = [{
+  type: "function",
+  name: "transfer",
+  stateMutability: "nonpayable",
+  inputs: [
+    { name: "recipient", type: "address" },
+    { name: "amount", type: "uint256" },
+  ],
+  outputs: [{ name: "success", type: "bool" }],
+}] as const;
 
 export type WorkflowAction<C extends EvmChain = EvmChain> =
   | { readonly kind: "fund"; readonly from: Address<C>; readonly to: Address<C> }
@@ -43,9 +55,19 @@ function assertActionMatchesTransaction<C extends EvmChain>(node: WorkflowNode<C
     case "claim":
       if (!from || !sameAddress(from, node.action.signer) || !to || !sameAddress(to, node.action.contract)) fail("ES4001", "WorkflowActionMismatch", "Claim action metadata does not match transaction signer/contract.", { node: node.id });
       break;
-    case "token-rescue":
+    case "token-rescue": {
       if (!from || !sameAddress(from, node.action.from) || !to || !sameAddress(to, node.action.token.address)) fail("ES4001", "WorkflowActionMismatch", "Token-rescue transaction must be sent by the declared source wallet to the declared token contract.", { node: node.id, token: node.action.token.symbol });
+      if (!node.tx.intent.data) fail("ES4017", "MissingTokenTransferCalldata", "Token rescue must contain standard ERC-20 transfer calldata.", { node: node.id });
+      const decoded = decodeCall(ERC20_TRANSFER_ABI, node.tx.intent.data);
+      const recipient = decoded.args[0];
+      const amount = decoded.args[1];
+      if (decoded.functionName !== "transfer" || typeof recipient !== "string" || !sameAddress(recipient, node.action.to) || typeof amount !== "bigint" || amount <= 0n) {
+        fail("ES4017", "TokenTransferIntentMismatch", "Token rescue calldata must transfer a positive amount to the exact declared safe recipient.", { node: node.id });
+      }
+      if (node.tx.intent.value !== undefined && (node.tx.intent.value as bigint) !== 0n) fail("ES4017", "TokenTransferUnexpectedNativeValue", "ERC-20 transfer transaction must not send native value.", { node: node.id });
+      // The raw signed bytes are not authenticated here. The legacy completion path cannot claim VERIFIED_RECOVERY.
       break;
+    }
     case "native-sweep":
       if (!from || !sameAddress(from, node.action.from) || !to || !sameAddress(to, node.action.to)) fail("ES4001", "WorkflowActionMismatch", "Native-sweep action metadata does not match transaction from/to.", { node: node.id });
       break;
