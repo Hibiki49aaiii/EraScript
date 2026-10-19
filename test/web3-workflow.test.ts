@@ -173,3 +173,23 @@ test("balance snapshots refuse conflicting duplicate token entries", () => {
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4023",
   );
 });
+
+test("token rescue rejects ERC-20 calldata redirected to a different recipient", () => {
+  const nodes = completeNodes().map((node) => node.id === "rescue-token"
+    ? { ...node, tx: { ...node.tx, intent: { ...node.tx.intent, data: encodeCall(transferAbi, "transfer", [victim, 100n]) } } }
+    : node);
+  assert.throws(
+    () => defineTransactionGraph(Ethereum, nodes),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4017",
+  );
+});
+
+test("token rescue rejects zero ERC-20 transfer amount", () => {
+  const nodes = completeNodes().map((node) => node.id === "rescue-token"
+    ? { ...node, tx: { ...node.tx, intent: { ...node.tx.intent, data: encodeCall(transferAbi, "transfer", [safe, 0n]) } } }
+    : node);
+  assert.throws(
+    () => defineTransactionGraph(Ethereum, nodes),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4017",
+  );
+});
