@@ -140,6 +140,7 @@ export function defineRescueWorkflow<C extends EvmChain>(input: {
   expectedRecoveries?: readonly TokenAmount[];
 }): RescueWorkflow<C> {
   if (input.graph.chain.id !== input.chain.id) fail("ES3104", "ChainMismatch", "Rescue workflow and transaction graph are bound to different chains.");
+  if (sameAddress(input.victim, input.safe)) fail("ES4013", "InvalidRescueDestination", "Victim and safe destination cannot be the same wallet.");
   const requireNativeSweep = input.requireNativeSweep ?? true;
   const nativeDustLimit = input.nativeDustLimit ?? wei(0n);
 
@@ -157,8 +158,22 @@ export function defineRescueWorkflow<C extends EvmChain>(input: {
   }
 
   const expectedRecoveries = input.expectedRecoveries ?? [];
+  const declaredAssets = new Set<string>();
+  for (const asset of input.assets) {
+    const identity = `${asset.chain.id}:${asset.address.toLowerCase()}:${asset.decimals}`;
+    if (declaredAssets.has(identity)) fail("ES4016", "DuplicateRescueAsset", "Rescue workflow declares the same token more than once.", { token: asset.symbol });
+    declaredAssets.add(identity);
+  }
+  const seenExpectations = new Set<string>();
   for (const expected of expectedRecoveries) {
     if (!input.assets.some((asset) => sameToken(asset, expected.token))) fail("ES4012", "UnexpectedRecoveryAsset", "Expected recovery amount references an asset not declared in this rescue workflow.", { token: expected.token.symbol });
+    const identity = `${expected.token.chain.id}:${expected.token.address.toLowerCase()}:${expected.token.decimals}`;
+    if (seenExpectations.has(identity)) fail("ES4015", "DuplicateRecoveryObjective", "Each rescue token must have exactly one expected safe-wallet credit.", { token: expected.token.symbol });
+    if (expected.raw <= 0n) fail("ES4014", "InvalidRecoveryObjective", "A token rescue requires a strictly positive expected safe-wallet credit.", { token: expected.token.symbol });
+    seenExpectations.add(identity);
+  }
+  if (input.assets.some((asset) => !expectedRecoveries.some((expected) => sameToken(asset, expected.token)))) {
+    fail("ES4014", "MissingRecoveryObjective", "Every declared rescue token must have an explicit positive safe-wallet recovery objective.");
   }
 
   return { kind: "rescue-workflow", chain: input.chain, victim: input.victim, safe: input.safe, assets: input.assets, graph: input.graph, requireNativeSweep, nativeDustLimit, expectedRecoveries };
