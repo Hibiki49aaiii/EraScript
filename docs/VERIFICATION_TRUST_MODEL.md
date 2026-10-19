@@ -1,9 +1,9 @@
 # EraScript Verification Trust Model
 
-**Status:** Normative *target assurance contract* and **v0.18 implementation inventory**, not a certification.  
-**Issue:** [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22), parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15).  
-**Audited base:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` (`erascript-lang@0.18.0`).  
-**Scope:** EVM, EVM rollups, Solana, Jito, Sui, RAILGUN and EVM rescue workflows.  
+**Status:** Normative *target assurance contract* and **v0.18 implementation inventory**, not a certification.
+**Issue:** [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22), parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15).
+**Audited base:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` (`erascript-lang@0.18.0`).
+**Scope:** EVM, EVM rollups, Solana, Jito, Sui, RAILGUN and EVM rescue workflows.
 **Conflict order:** current user requirements → Issue #22 → current code/tests → architecture docs → installed SDK primary docs → assumptions (per `AGENTS.md`).
 
 > **Safety boundary:** A consistent report hash, a claimed `VERIFIED_*` state or a valid Ed25519 report attestation does **not** independently prove that a transaction finalized, the observed RPC data was truthful, or assets reached the intended destination. Only the specific evidence-validation path and its stated trust assumptions can support those claims.
