@@ -1,6 +1,6 @@
 # Issue #25 — TEST_MATRIX (proposed, NOT EXECUTED)
 
-**Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` · **Scope:** issue-scoped security regression cases for future implementation.  
+**Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` · **Scope:** issue-scoped security regression cases for future implementation.
 **Execution status:** All `R25-Txx` test cases below are **design proposals**; none were run by the design-only PR. The previously observed 226/226 Core CI pass on #22 baseline does not qualify #25 implementation.
 
 Test fixture requirements: deterministic offline, no customer keys, no mainnet signing, no transactions, no external network writes; use local serialized EVM envelope examples or **non-signing** synthetic field fixtures when testing a pure decoder. For signed-transaction parity tests, test inert published/mock signed-bytes as read-only inputs and document provenance. Actual TypeScript fixtures must match exact installed `viem` signatures/SDK versions.
@@ -45,7 +45,7 @@ Test fixture requirements: deterministic offline, no customer keys, no mainnet s
 ## Required future verification gates
 
 1. Exact baseline source and `npm ci` locked dependencies.
-2. `npm run check`; focused `web3-workflow`, `web3-verification`, `web3-abi` and new rescue evidence tests.
+2. `npm run check`; focused `web3-workflow`, `web3-verification`, `abi` and new rescue evidence tests.
 3. `npm run test:core` normal **and** `FORCE_COLOR=1`; `npm run test:package`.
 4. `git diff --check`, changed-file/static doc/code audit and source-map/package smoke.
 5. Actual GitHub Actions Core CI at the relevant implementation SHA; do not reuse #22's old results.
