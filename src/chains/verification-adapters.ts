@@ -1,6 +1,7 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { IncludedTx, ConfirmedTx, FinalizedTx } from "../web3/tx.js";
 import type { EvmChain } from "../web3/types.js";
+import { assertEvmExecutionQuorumIntegrity, type EvmExecutionQuorum } from "./evm-execution-quorum.js";
 import type { JitoBundleStatusEvidence, JitoBundleSubmitted } from "./jito.js";
 import type { RollupSettlementEvidence } from "./rollup-finality.js";
 import type { SolanaSignatureStatusEvidence, SolanaSubmittedTransaction } from "./solana-adapter.js";
@@ -71,6 +72,51 @@ export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmC
     evidence: [
       multichainEvidenceRef("evm-execution", transaction, "viem"),
       ...(settlement ? [multichainEvidenceRef("rollup-settlement", settlement, settlement.adapter)] : []),
+    ],
+  });
+}
+
+/**
+ * Quorum-backed EVM verification. A terminal claim is conditional on the
+ * caller supplying genuine, independently operated provider observations.
+ * A quorum hash alone does not authenticate the RPC operators.
+ */
+export function evmExecutionVerificationReportWithQuorum<C extends EvmChain>(
+  profile: EvmChainProfile,
+  transaction: EvmObservedTransaction<C>,
+  quorum: EvmExecutionQuorum<C>,
+): MultichainVerificationReport {
+  assertEvmExecutionQuorumIntegrity(quorum);
+  const receipt = transaction.receipt;
+  if (
+    profile.chainId !== transaction.intent.chain.id
+    || quorum.profileId !== profile.id
+    || quorum.chainId !== profile.chainId
+    || quorum.transactionHash.toLowerCase() !== receipt.transactionHash.toLowerCase()
+    || quorum.receipt.transactionHash.toLowerCase() !== receipt.transactionHash.toLowerCase()
+    || quorum.receipt.blockNumber !== receipt.blockNumber
+    || quorum.receipt.blockHash.toLowerCase() !== receipt.blockHash.toLowerCase()
+    || quorum.receipt.status !== receipt.status
+  ) {
+    fail("ES4641", "EvmVerificationQuorumMismatch", "EVM execution quorum must match the exact profile, transaction and canonical receipt.");
+  }
+  const success = receipt.status === "success";
+  // L2 finality cannot imply L1 settlement; direct supplied settlement metadata is not trusted here.
+  const finalized = success && profile.finality.kind !== "evm-rollup" && quorum.stage === "finalized" && quorum.requireFinalized;
+  return createMultichainVerificationReport({
+    profile,
+    backend: "public-rpc",
+    subject: `evm:${receipt.transactionHash}`,
+    state: !success ? "NOT_READY" : finalized ? "VERIFIED_FINALITY" : "EXECUTION_OBSERVED",
+    checks: [
+      { id: "evm.quorum", status: success ? "pass" : "fail", message: "EVM multi-provider execution quorum is bound to the requested receipt.", details: { quorumHash: quorum.quorumHash, stage: quorum.stage } },
+      { id: "evm.finality", status: finalized ? "pass" : "warning", message: finalized
+        ? "Every quorum provider observed a canonical successful receipt with finalized head at or above its block."
+        : "EVM quorum finality is not sufficient for the profile's terminal policy; rollups additionally require trusted L1 settlement." },
+    ],
+    evidence: [
+      multichainEvidenceRef("evm-execution", transaction, "viem"),
+      multichainEvidenceRef("evm-execution-quorum", quorum, "multi-rpc"),
     ],
   });
 }
