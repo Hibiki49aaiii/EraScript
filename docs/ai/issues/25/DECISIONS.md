@@ -1,7 +1,7 @@
 # Issue #25 — DECISIONS (proposed; no implementation authorization)
 
-**Baseline:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7`  
-**Owner:** Issue [#25](https://github.com/Hibiki49aaiii/EraScript/issues/25); related Finality Issue [#26](https://github.com/Hibiki49aaiii/EraScript/issues/26).  
+**Baseline:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7`
+**Owner:** Issue [#25](https://github.com/Hibiki49aaiii/EraScript/issues/25); related Finality Issue [#26](https://github.com/Hibiki49aaiii/EraScript/issues/26).
 **State:** Pending security-critical migration choice. All proposals below are for future code PRs, **not** behavior currently provided by v0.18.
 
 ## D25-01 — Terminal verification API
