@@ -137,7 +137,7 @@ test("token rescue rejects omitted and zero safe-wallet objectives", () => {
   for (const expectedRecoveries of [undefined, [], [tokenAmountRaw(token, 0n)]]) {
     assert.throws(
       () => defineRescueWorkflow({ ...base, ...(expectedRecoveries === undefined ? {} : { expectedRecoveries }) }),
-      (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4993",
+      (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === (expectedRecoveries?.length ? "ES4014" : "ES4993"),
     );
   }
 });
