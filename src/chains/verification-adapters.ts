@@ -98,7 +98,7 @@ export function evmExecutionVerificationReportWithQuorum<C extends EvmChain>(
     || quorum.receipt.blockHash.toLowerCase() !== receipt.blockHash.toLowerCase()
     || quorum.receipt.status !== receipt.status
   ) {
-    fail("ES4641", "EvmVerificationQuorumMismatch", "EVM execution quorum must match the exact profile, transaction and canonical receipt.");
+    fail("ES4990", "EvmVerificationQuorumMismatch", "EVM execution quorum must match the exact profile, transaction and canonical receipt.");
   }
   const success = receipt.status === "success";
   // L2 finality cannot imply L1 settlement; direct supplied settlement metadata is not trusted here.
