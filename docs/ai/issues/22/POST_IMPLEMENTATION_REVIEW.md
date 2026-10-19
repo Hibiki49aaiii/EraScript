@@ -4,6 +4,7 @@
 **Issue:** [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22) · parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15)
 **Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7`
 **Branch:** `issue-22-verification-trust-model`
+**Pull Request:** [#23 — docs(security): specify cross-chain verification trust boundaries](https://github.com/Hibiki49aaiii/EraScript/pull/23) (draft; not merged)
 **Nature of change:** source-observed documentation contract and gap register. **Not a security fix, runtime patch, mainnet verification or security certification.**
 
 ## Implementation Result
