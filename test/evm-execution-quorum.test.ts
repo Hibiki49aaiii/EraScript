@@ -348,7 +348,7 @@ test("finality quorum requires finalizedTag binding and every finalized head to 
   const mismatched = { ...promoted.transaction, receipt: { ...promoted.transaction.receipt, blockNumber: 101n } };
   assert.throws(
     () => evmExecutionVerificationReportWithQuorum(profile, mismatched, quorum),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4641",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4990",
   );
 
   const unboundFinality = await boundProvider("provider-c");
