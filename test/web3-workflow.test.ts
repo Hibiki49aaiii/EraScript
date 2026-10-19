@@ -137,7 +137,7 @@ test("token rescue rejects omitted and zero safe-wallet objectives", () => {
   for (const expectedRecoveries of [undefined, [], [tokenAmountRaw(token, 0n)]]) {
     assert.throws(
       () => defineRescueWorkflow({ ...base, ...(expectedRecoveries === undefined ? {} : { expectedRecoveries }) }),
-      (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4014",
+      (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4993",
     );
   }
 });
@@ -180,7 +180,7 @@ test("token rescue rejects ERC-20 calldata redirected to a different recipient",
     : node);
   assert.throws(
     () => defineTransactionGraph(Ethereum, nodes),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4017",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4991",
   );
 });
 
@@ -190,6 +190,6 @@ test("token rescue rejects zero ERC-20 transfer amount", () => {
     : node);
   assert.throws(
     () => defineTransactionGraph(Ethereum, nodes),
-    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4017",
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4991",
   );
 });
