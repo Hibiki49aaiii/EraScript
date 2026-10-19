@@ -1,9 +1,9 @@
 # Issue #22 — Post-Implementation Review
 
-**Review status:** **DOCUMENTATION COMPLETE; DRAFT REVIEW / EXECUTABLE QUALIFICATION PENDING**  
-**Issue:** [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22) · parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15)  
-**Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7`  
-**Branch:** `issue-22-verification-trust-model`  
+**Review status:** **DOCUMENTATION COMPLETE; DRAFT REVIEW / EXECUTABLE QUALIFICATION PENDING**
+**Issue:** [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22) · parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15)
+**Base Commit SHA:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7`
+**Branch:** `issue-22-verification-trust-model`
 **Nature of change:** source-observed documentation contract and gap register. **Not a security fix, runtime patch, mainnet verification or security certification.**
 
 ## Implementation Result
@@ -39,8 +39,8 @@ All the following results are from **remote repository reading, deterministic te
 1. Fetched actual `main` branch and established SHA `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` before branching. Retrieved `AGENTS.md`, issues #15/#22, `.ai/index.md`, existing attestation ADR, relevant source paths/tests and published docs.
 2. Verified the v0.18 CLI implementation reports `integrity`, `stateRequirementMet`, `authenticated` separately; cross-checked `markFinalized`, `expectedRecoveries`, strict and direct chain adapters using source excerpts.
 3. GitHub branch comparison against audited base: **6 documentation files** initially (new 4, modified 2), zero `src/**`/`test/**`/manifest/workflow modifications. After this review is added, the expected comparison is **7 documentation files**.
-4. Explicit markdown static audit on 6 files: **0 broken relative Markdown links**; canonical spec includes all **TM-01–TM-14 (14/14)** and **FR-01–FR-11 (11/11)**; all requested verification state names and EVM/Solana/Jito/Sui/RAILGUN/rollup appear; code fences balanced.
-5. Detected **4 Markdown trailing-whitespace lines** in initial model header; removed them. Clarified a Node/SDK bypass phrase in human summary. No source-code changes.
+4. Explicit markdown static audit on all 7 changed files (54 relative links): **0 broken relative Markdown links**; canonical spec includes all **TM-01–TM-14 (14/14)** and **FR-01–FR-11 (11/11)**; all requested verification state names and EVM/Solana/Jito/Sui/RAILGUN/rollup appear; code fences balanced.
+5. Detected **4 Markdown trailing-whitespace lines** in initial model header and **4 in the initial post-review header**; removed them. Clarified a Node/SDK bypass phrase in human summary. No source-code changes.
 6. Source/test references were checked against the repository file tree. Code-associated behavioral testing was **not executed** and is designated `PROPOSED TEST` where not already covered.
 7. `.github/workflows/ci.yml` currently contains `paths-ignore: ["README.md", "docs/**"]` on pull_request and push; a docs-only PR is therefore **not expected to run Core CI automatically**. A skipped check is not a pass.
 
