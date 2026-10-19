@@ -200,7 +200,17 @@ export interface BalanceSnapshot<C extends EvmChain = EvmChain> {
 }
 
 export function balanceSnapshot<C extends EvmChain>(input: Omit<BalanceSnapshot<C>, "kind">): BalanceSnapshot<C> {
+  const nativeAccounts = new Set<string>();
+  for (const entry of input.native) {
+    const account = entry.account.toLowerCase();
+    if (nativeAccounts.has(account)) fail("ES4023", "DuplicateSnapshotBalance", "Snapshot contains duplicate native balances for an account.", { account });
+    nativeAccounts.add(account);
+  }
+  const tokenAccounts = new Set<string>();
   for (const entry of input.tokens) {
+    const identity = `${entry.account.toLowerCase()}:${entry.token.chain.id}:${entry.token.address.toLowerCase()}:${entry.token.decimals}`;
+    if (tokenAccounts.has(identity)) fail("ES4023", "DuplicateSnapshotBalance", "Snapshot contains duplicate token balances for the same account and token.", { account: entry.account, token: entry.token.symbol });
+    tokenAccounts.add(identity);
     if (entry.token.chain.id !== input.chain.id) fail("ES3104", "ChainMismatch", "Token balance snapshot contains another chain's token.", { token: entry.token.symbol });
     assertSameToken(entry.token, entry.balance.token);
   }
@@ -234,6 +244,9 @@ function tokenAt<C extends EvmChain>(snapshot: BalanceSnapshot<C>, account: Addr
 export function verifyStateInvariants<C extends EvmChain>(before: BalanceSnapshot<C>, after: BalanceSnapshot<C>, invariants: readonly StateInvariant<C>[]): { readonly passed: boolean; readonly results: readonly InvariantResult[] } {
   if (before.chain.id !== after.chain.id) fail("ES3104", "ChainMismatch", "Before/after snapshots are from different chains.");
   if (after.blockNumber < before.blockNumber) fail("ES4021", "SnapshotOrderInvalid", "After snapshot predates before snapshot.", { before: before.blockNumber.toString(), after: after.blockNumber.toString() });
+  if (before.blockNumber === after.blockNumber && before.blockHash !== undefined && after.blockHash !== undefined && before.blockHash.toLowerCase() !== after.blockHash.toLowerCase()) {
+    fail("ES4021", "SnapshotBlockMismatch", "Two snapshots at the same height cannot refer to different block hashes.");
+  }
 
   const results = invariants.map((invariant): InvariantResult => {
     if (invariant.type === "native-lte") {
@@ -269,6 +282,7 @@ export function rescueFinalStateInvariants<C extends EvmChain>(workflow: RescueW
 }
 
 export function assertRescueFinalState<C extends EvmChain>(workflow: RescueWorkflow<C>, before: BalanceSnapshot<C>, after: BalanceSnapshot<C>): { readonly passed: true; readonly results: readonly InvariantResult[] } {
+  if (before.chain.id !== workflow.chain.id || after.chain.id !== workflow.chain.id) fail("ES3104", "ChainMismatch", "Rescue post-state snapshots must match the workflow chain.");
   const verification = verifyStateInvariants(before, after, rescueFinalStateInvariants(workflow));
   if (!verification.passed) fail("ES4022", "RescueInvariantFailed", "Post-execution state does not satisfy the rescue workflow invariants.", { failed: verification.results.filter((result) => !result.passed) });
   return { passed: true, results: verification.results };
