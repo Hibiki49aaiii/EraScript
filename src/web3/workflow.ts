@@ -62,9 +62,9 @@ function assertActionMatchesTransaction<C extends EvmChain>(node: WorkflowNode<C
       const recipient = decoded.args[0];
       const amount = decoded.args[1];
       if (decoded.functionName !== "transfer" || typeof recipient !== "string" || !sameAddress(recipient, node.action.to) || typeof amount !== "bigint" || amount <= 0n) {
-        fail("ES4017", "TokenTransferIntentMismatch", "Token rescue calldata must transfer a positive amount to the exact declared safe recipient.", { node: node.id });
+        fail("ES4991", "TokenTransferIntentMismatch", "Token rescue calldata must transfer a positive amount to the exact declared safe recipient.", { node: node.id });
       }
-      if (node.tx.intent.value !== undefined && (node.tx.intent.value as bigint) !== 0n) fail("ES4017", "TokenTransferUnexpectedNativeValue", "ERC-20 transfer transaction must not send native value.", { node: node.id });
+      if (node.tx.intent.value !== undefined && (node.tx.intent.value as bigint) !== 0n) fail("ES4992", "TokenTransferUnexpectedNativeValue", "ERC-20 transfer transaction must not send native value.", { node: node.id });
       // The raw signed bytes are not authenticated here. The legacy completion path cannot claim VERIFIED_RECOVERY.
       break;
     }
@@ -195,7 +195,7 @@ export function defineRescueWorkflow<C extends EvmChain>(input: {
     seenExpectations.add(identity);
   }
   if (input.assets.some((asset) => !expectedRecoveries.some((expected) => sameToken(asset, expected.token)))) {
-    fail("ES4014", "MissingRecoveryObjective", "Every declared rescue token must have an explicit positive safe-wallet recovery objective.");
+    fail("ES4993", "MissingRecoveryObjective", "Every declared rescue token must have an explicit positive safe-wallet recovery objective.");
   }
 
   return { kind: "rescue-workflow", chain: input.chain, victim: input.victim, safe: input.safe, assets: input.assets, graph: input.graph, requireNativeSweep, nativeDustLimit, expectedRecoveries };
@@ -267,7 +267,7 @@ export function verifyStateInvariants<C extends EvmChain>(before: BalanceSnapsho
   if (before.chain.id !== after.chain.id) fail("ES3104", "ChainMismatch", "Before/after snapshots are from different chains.");
   if (after.blockNumber < before.blockNumber) fail("ES4021", "SnapshotOrderInvalid", "After snapshot predates before snapshot.", { before: before.blockNumber.toString(), after: after.blockNumber.toString() });
   if (before.blockNumber === after.blockNumber && before.blockHash !== undefined && after.blockHash !== undefined && before.blockHash.toLowerCase() !== after.blockHash.toLowerCase()) {
-    fail("ES4021", "SnapshotBlockMismatch", "Two snapshots at the same height cannot refer to different block hashes.");
+    fail("ES4994", "SnapshotBlockMismatch", "Two snapshots at the same height cannot refer to different block hashes.");
   }
 
   const results = invariants.map((invariant): InvariantResult => {
