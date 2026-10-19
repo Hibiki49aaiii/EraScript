@@ -6,6 +6,8 @@ EraScript does not replace Node.js. It compiles to ordinary JavaScript, keeps np
 
 > **AI writes intent. EraScript verifies execution.**
 
+> **Verification trust boundary:** Report hash integrity, a claimed verification state, and a valid report attestation are separate from independently established chain finality or confirmed asset recovery. See the [Verification Trust Model](docs/VERIFICATION_TRUST_MODEL.md) for current guarantees, conditional paths and documented gaps.
+
 ## Why EraScript
 
 A syntactically correct Web3 script can still use the wrong chain, corrupt a proof, mix units, sign an unintended payload, submit stale execution data, omit a recovery step, or treat an ID/hash as success.
@@ -15,6 +17,7 @@ EraScript moves those assumptions into machine-checkable types, capability profi
 Design/implementation documents:
 
 - [`docs/WEB3_SPEC.md`](docs/WEB3_SPEC.md)
+- [`docs/VERIFICATION_TRUST_MODEL.md`](docs/VERIFICATION_TRUST_MODEL.md) — evidence provenance, trust boundaries, and limits
 - [`docs/MULTICHAIN_ARCHITECTURE.md`](docs/MULTICHAIN_ARCHITECTURE.md)
 - [`docs/AI_FIRST_DESIGN.md`](docs/AI_FIRST_DESIGN.md)
 - [`docs/V03_IMPLEMENTATION.md`](docs/V03_IMPLEMENTATION.md)
