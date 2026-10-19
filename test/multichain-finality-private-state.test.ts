@@ -110,8 +110,9 @@ test("OP Stack finality keeps L2 finality separate until rollup RPC proves final
   assert.equal(evidence.proofReference, `op-output-root:${OUTPUT_ROOT}`);
 
   const settledReport = evmExecutionVerificationReport(profile, finalizedL2, evidence);
-  assert.equal(settledReport.state, "VERIFIED_FINALITY");
-  assert.equal(settledReport.verifiedFinality, true);
+  assert.equal(settledReport.state, "EXECUTION_OBSERVED");
+  assert.equal(settledReport.verifiedFinality, false);
+  assert.ok(settledReport.checks.some((entry) => entry.id === "evm.rollup-settlement" && entry.status === "warning"));
 });
 
 test("Arbitrum confirmed assertion is not L1 finality until its parent-chain anchor is finalized", async () => {
@@ -171,8 +172,8 @@ test("Arbitrum confirmed assertion is not L1 finality until its parent-chain anc
   assert.equal(assertRollupL1Finalized(finalized).l1Anchor.blockNumber, 500n);
   assert.equal(finalized.proofReference, "arbitrum-confirmed-assertion:0xassertion-1234");
   const finalizedReport = evmExecutionVerificationReport(profile, finalizedL2, finalized);
-  assert.equal(finalizedReport.state, "VERIFIED_FINALITY");
-  assert.equal(finalizedReport.verifiedFinality, true);
+  assert.equal(finalizedReport.state, "EXECUTION_OBSERVED");
+  assert.equal(finalizedReport.verifiedFinality, false);
 });
 
 
@@ -240,7 +241,7 @@ test("Arbitrum SDK bridge re-verifies canonical L1 hash and finalized head indep
   finalizedHead = 500n;
   const finalized = await observeRollupSettlement({ profile, transaction: finalizedL2, adapter, nowMs: 6_000 });
   assert.equal(finalized.stage, "l1-finalized");
-  assert.equal(evmExecutionVerificationReport(profile, finalizedL2, finalized).state, "VERIFIED_FINALITY");
+  assert.equal(evmExecutionVerificationReport(profile, finalizedL2, finalized).state, "EXECUTION_OBSERVED");
 
   const mismatchedL1Client = {
     async getBlock(input: { blockTag: "finalized" } | { blockNumber: bigint }) {

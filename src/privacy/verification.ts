@@ -113,13 +113,15 @@ export function railgunVerificationReport<C extends EvmChain>(input: {
   }
 
   const anyFail = checks.some((check) => check.status === "fail");
-  const finalized = input.baseExecution?.state === "finalized";
-  const privatePassed = input.privateState !== undefined && input.privateState.assertions.every((assertion) => assertion.passed) && input.privateState.proofBindingHash.toLowerCase() === input.submission.proof.proofBindingHash.toLowerCase();
+  // Direct caller-provided base execution and private assertions are not independently authenticated finality.
+  // The strict railgunVerificationReportWithEvmQuorum path retains its finality gate.
   const baseObserved = input.baseExecution !== undefined && input.baseExecution.receipt.status === "success";
   const state = anyFail ? "NOT_READY" as const
-    : finalized && privatePassed ? "VERIFIED_FINALITY" as const
     : baseObserved ? "EXECUTION_OBSERVED" as const
     : "READY_FOR_SUBMISSION" as const;
+  if (!anyFail && baseObserved) {
+    checks.push({ id: "railgun.finality-provenance", status: "warning", message: "Direct caller-supplied base execution and private-state assertions cannot establish independently verified finality; use the strict EVM quorum verification path." });
+  }
 
   return createMultichainVerificationReport({
     profile: input.profile,
