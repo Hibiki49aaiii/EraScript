@@ -7,6 +7,7 @@ import {
   balanceSnapshot,
   defineRescueWorkflow,
   defineToken,
+  encodeCall,
   defineTransactionGraph,
   draftTransaction,
   gas,
@@ -32,9 +33,17 @@ const token = defineToken({
   decimals: 18,
 });
 
+const transferAbi = [{
+  type: "function",
+  name: "transfer",
+  stateMutability: "nonpayable",
+  inputs: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
+  outputs: [{ name: "success", type: "bool" }],
+}] as const;
+
 function signed(from: typeof victim | typeof safe, to: typeof victim | typeof safe | typeof claimContract | typeof token.address, nonceValue: number, raw: `0x${string}`): SignedTx<typeof Ethereum> {
   const prepared = prepareTransaction(
-    draftTransaction({ chain: Ethereum, from, to }),
+    draftTransaction({ chain: Ethereum, from, to, ...(to === token.address ? { data: encodeCall(transferAbi, "transfer", [safe, 100n]) } : {}) }),
     { nonce: nonce(Ethereum, nonceValue, "explicit"), gas: gas(100_000n), fees: { type: "legacy", gasPrice: weiPerGas(1n) } },
   );
   return signSimulated(recordSimulation(prepared, { status: "success", blockNumber: 100n, blockHash: `0x${"aa".repeat(32)}`, stateOverrides: false }), raw);
