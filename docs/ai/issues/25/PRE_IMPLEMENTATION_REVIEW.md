@@ -1,6 +1,6 @@
 # Issue #25 — PRE_IMPLEMENTATION_REVIEW
 
-**Baseline:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` · **Issue:** [#25](https://github.com/Hibiki49aaiii/EraScript/issues/25) · **Scope:** design-stage documents only.  
+**Baseline:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` · **Issue:** [#25](https://github.com/Hibiki49aaiii/EraScript/issues/25) · **Scope:** design-stage documents only.
 **Status:** Three-pass review of proposed design; approval to **document**, not to change security-critical runtime behavior or API contracts.
 
 ## Pass 1 — Requirements and acceptance review
