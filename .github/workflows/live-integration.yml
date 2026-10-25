@@ -1,5 +1,8 @@
 name: Live Network Integration
 
+permissions:
+  contents: read
+
 # v0.6 completion smoke: read-only network evidence; never broadcasts transactions.
 
 on:
@@ -28,11 +31,14 @@ jobs:
       SUI_GRPC_URL: ${{ vars.SUI_GRPC_URL }}
       JITO_BLOCK_ENGINE_URL: ${{ vars.JITO_BLOCK_ENGINE_URL }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - run: npm ci
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node --test dist/test/live/solana-rpc.test.js
       - run: node --test dist/test/live/sui-core.test.js
@@ -47,11 +53,14 @@ jobs:
       RAILGUN_WAKU_DISCOVERY_TIMEOUT_MS: "90000"
       RAILGUN_WAKU_DEPS_ROOT: ${{ github.workspace }}/test/live/waku-deps
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - run: npm ci
-      - run: npm ci --prefix test/live/waku-deps
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm ci --prefix test/live/waku-deps --ignore-scripts
       - run: npm run build
       - run: node dist/test/live/railgun-waku.live.js

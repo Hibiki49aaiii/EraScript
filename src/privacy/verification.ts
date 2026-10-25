@@ -1,6 +1,6 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import { RailgunPrivacyOverlay } from "../chains/profiles.js";
-import { assertEvmExecutionQuorumIntegrity, type EvmExecutionQuorum } from "../chains/evm-execution-quorum.js";
+import { assertEvmExecutionQuorumIntegrity, assertEvmExecutionQuorumFreshness, type EvmExecutionQuorum } from "../chains/evm-execution-quorum.js";
 import type { RollupSettlementEvidence } from "../chains/rollup-finality.js";
 import { createMultichainVerificationReport, multichainEvidenceRef, type MultichainVerificationCheck, type MultichainVerificationReport } from "../chains/verification.js";
 import type { EvmChainProfile } from "../chains/types.js";
@@ -113,13 +113,15 @@ export function railgunVerificationReport<C extends EvmChain>(input: {
   }
 
   const anyFail = checks.some((check) => check.status === "fail");
-  const finalized = input.baseExecution?.state === "finalized";
-  const privatePassed = input.privateState !== undefined && input.privateState.assertions.every((assertion) => assertion.passed) && input.privateState.proofBindingHash.toLowerCase() === input.submission.proof.proofBindingHash.toLowerCase();
+  // Direct caller-provided base execution and private assertions are not independently authenticated finality.
+  // The strict railgunVerificationReportWithEvmQuorum path retains its finality gate.
   const baseObserved = input.baseExecution !== undefined && input.baseExecution.receipt.status === "success";
   const state = anyFail ? "NOT_READY" as const
-    : finalized && privatePassed ? "VERIFIED_FINALITY" as const
     : baseObserved ? "EXECUTION_OBSERVED" as const
     : "READY_FOR_SUBMISSION" as const;
+  if (!anyFail && baseObserved) {
+    checks.push({ id: "railgun.finality-provenance", status: "warning", message: "Direct caller-supplied base execution and private-state assertions cannot establish independently verified finality; use the strict EVM quorum verification path." });
+  }
 
   return createMultichainVerificationReport({
     profile: input.profile,
@@ -147,6 +149,7 @@ export function railgunVerificationReportWithEvmQuorum<C extends EvmChain>(input
   settlement?: RollupSettlementEvidence;
 }): MultichainVerificationReport {
   assertEvmExecutionQuorumIntegrity(input.baseQuorum);
+  if (input.baseQuorum.stage === "finalized") assertEvmExecutionQuorumFreshness(input.baseQuorum);
 
   const txHash = input.baseExecution.receipt.transactionHash;
   if (

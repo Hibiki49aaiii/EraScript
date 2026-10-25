@@ -1,4 +1,5 @@
 import { EraDiagnosticError } from "../diagnostics.js";
+import { decodeCall } from "./abi.js";
 import { assertSameToken, sameToken, tokenAmountRaw, type TokenAmount, type TokenDefinition } from "./token.js";
 import type { SignedTx } from "./tx.js";
 import type { Address, BlockHash, EvmChain } from "./types.js";
@@ -11,6 +12,17 @@ function fail(code: string, kind: string, message: string, details?: Record<stri
 function sameAddress(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
+
+const ERC20_TRANSFER_ABI = [{
+  type: "function",
+  name: "transfer",
+  stateMutability: "nonpayable",
+  inputs: [
+    { name: "recipient", type: "address" },
+    { name: "amount", type: "uint256" },
+  ],
+  outputs: [{ name: "success", type: "bool" }],
+}] as const;
 
 export type WorkflowAction<C extends EvmChain = EvmChain> =
   | { readonly kind: "fund"; readonly from: Address<C>; readonly to: Address<C> }
@@ -43,9 +55,19 @@ function assertActionMatchesTransaction<C extends EvmChain>(node: WorkflowNode<C
     case "claim":
       if (!from || !sameAddress(from, node.action.signer) || !to || !sameAddress(to, node.action.contract)) fail("ES4001", "WorkflowActionMismatch", "Claim action metadata does not match transaction signer/contract.", { node: node.id });
       break;
-    case "token-rescue":
+    case "token-rescue": {
       if (!from || !sameAddress(from, node.action.from) || !to || !sameAddress(to, node.action.token.address)) fail("ES4001", "WorkflowActionMismatch", "Token-rescue transaction must be sent by the declared source wallet to the declared token contract.", { node: node.id, token: node.action.token.symbol });
+      if (!node.tx.intent.data) fail("ES4017", "MissingTokenTransferCalldata", "Token rescue must contain standard ERC-20 transfer calldata.", { node: node.id });
+      const decoded = decodeCall(ERC20_TRANSFER_ABI, node.tx.intent.data);
+      const recipient = decoded.args[0];
+      const amount = decoded.args[1];
+      if (decoded.functionName !== "transfer" || typeof recipient !== "string" || !sameAddress(recipient, node.action.to) || typeof amount !== "bigint" || amount <= 0n) {
+        fail("ES4991", "TokenTransferIntentMismatch", "Token rescue calldata must transfer a positive amount to the exact declared safe recipient.", { node: node.id });
+      }
+      if (node.tx.intent.value !== undefined && (node.tx.intent.value as bigint) !== 0n) fail("ES4992", "TokenTransferUnexpectedNativeValue", "ERC-20 transfer transaction must not send native value.", { node: node.id });
+      // The raw signed bytes are not authenticated here. The legacy completion path cannot claim VERIFIED_RECOVERY.
       break;
+    }
     case "native-sweep":
       if (!from || !sameAddress(from, node.action.from) || !to || !sameAddress(to, node.action.to)) fail("ES4001", "WorkflowActionMismatch", "Native-sweep action metadata does not match transaction from/to.", { node: node.id });
       break;
@@ -140,6 +162,7 @@ export function defineRescueWorkflow<C extends EvmChain>(input: {
   expectedRecoveries?: readonly TokenAmount[];
 }): RescueWorkflow<C> {
   if (input.graph.chain.id !== input.chain.id) fail("ES3104", "ChainMismatch", "Rescue workflow and transaction graph are bound to different chains.");
+  if (sameAddress(input.victim, input.safe)) fail("ES4013", "InvalidRescueDestination", "Victim and safe destination cannot be the same wallet.");
   const requireNativeSweep = input.requireNativeSweep ?? true;
   const nativeDustLimit = input.nativeDustLimit ?? wei(0n);
 
@@ -157,8 +180,22 @@ export function defineRescueWorkflow<C extends EvmChain>(input: {
   }
 
   const expectedRecoveries = input.expectedRecoveries ?? [];
+  const declaredAssets = new Set<string>();
+  for (const asset of input.assets) {
+    const identity = `${asset.chain.id}:${asset.address.toLowerCase()}:${asset.decimals}`;
+    if (declaredAssets.has(identity)) fail("ES4016", "DuplicateRescueAsset", "Rescue workflow declares the same token more than once.", { token: asset.symbol });
+    declaredAssets.add(identity);
+  }
+  const seenExpectations = new Set<string>();
   for (const expected of expectedRecoveries) {
     if (!input.assets.some((asset) => sameToken(asset, expected.token))) fail("ES4012", "UnexpectedRecoveryAsset", "Expected recovery amount references an asset not declared in this rescue workflow.", { token: expected.token.symbol });
+    const identity = `${expected.token.chain.id}:${expected.token.address.toLowerCase()}:${expected.token.decimals}`;
+    if (seenExpectations.has(identity)) fail("ES4015", "DuplicateRecoveryObjective", "Each rescue token must have exactly one expected safe-wallet credit.", { token: expected.token.symbol });
+    if (expected.raw <= 0n) fail("ES4014", "InvalidRecoveryObjective", "A token rescue requires a strictly positive expected safe-wallet credit.", { token: expected.token.symbol });
+    seenExpectations.add(identity);
+  }
+  if (input.assets.some((asset) => !expectedRecoveries.some((expected) => sameToken(asset, expected.token)))) {
+    fail("ES4993", "MissingRecoveryObjective", "Every declared rescue token must have an explicit positive safe-wallet recovery objective.");
   }
 
   return { kind: "rescue-workflow", chain: input.chain, victim: input.victim, safe: input.safe, assets: input.assets, graph: input.graph, requireNativeSweep, nativeDustLimit, expectedRecoveries };
@@ -185,7 +222,17 @@ export interface BalanceSnapshot<C extends EvmChain = EvmChain> {
 }
 
 export function balanceSnapshot<C extends EvmChain>(input: Omit<BalanceSnapshot<C>, "kind">): BalanceSnapshot<C> {
+  const nativeAccounts = new Set<string>();
+  for (const entry of input.native) {
+    const account = entry.account.toLowerCase();
+    if (nativeAccounts.has(account)) fail("ES4023", "DuplicateSnapshotBalance", "Snapshot contains duplicate native balances for an account.", { account });
+    nativeAccounts.add(account);
+  }
+  const tokenAccounts = new Set<string>();
   for (const entry of input.tokens) {
+    const identity = `${entry.account.toLowerCase()}:${entry.token.chain.id}:${entry.token.address.toLowerCase()}:${entry.token.decimals}`;
+    if (tokenAccounts.has(identity)) fail("ES4023", "DuplicateSnapshotBalance", "Snapshot contains duplicate token balances for the same account and token.", { account: entry.account, token: entry.token.symbol });
+    tokenAccounts.add(identity);
     if (entry.token.chain.id !== input.chain.id) fail("ES3104", "ChainMismatch", "Token balance snapshot contains another chain's token.", { token: entry.token.symbol });
     assertSameToken(entry.token, entry.balance.token);
   }
@@ -219,6 +266,9 @@ function tokenAt<C extends EvmChain>(snapshot: BalanceSnapshot<C>, account: Addr
 export function verifyStateInvariants<C extends EvmChain>(before: BalanceSnapshot<C>, after: BalanceSnapshot<C>, invariants: readonly StateInvariant<C>[]): { readonly passed: boolean; readonly results: readonly InvariantResult[] } {
   if (before.chain.id !== after.chain.id) fail("ES3104", "ChainMismatch", "Before/after snapshots are from different chains.");
   if (after.blockNumber < before.blockNumber) fail("ES4021", "SnapshotOrderInvalid", "After snapshot predates before snapshot.", { before: before.blockNumber.toString(), after: after.blockNumber.toString() });
+  if (before.blockNumber === after.blockNumber && before.blockHash !== undefined && after.blockHash !== undefined && before.blockHash.toLowerCase() !== after.blockHash.toLowerCase()) {
+    fail("ES4994", "SnapshotBlockMismatch", "Two snapshots at the same height cannot refer to different block hashes.");
+  }
 
   const results = invariants.map((invariant): InvariantResult => {
     if (invariant.type === "native-lte") {
@@ -254,6 +304,7 @@ export function rescueFinalStateInvariants<C extends EvmChain>(workflow: RescueW
 }
 
 export function assertRescueFinalState<C extends EvmChain>(workflow: RescueWorkflow<C>, before: BalanceSnapshot<C>, after: BalanceSnapshot<C>): { readonly passed: true; readonly results: readonly InvariantResult[] } {
+  if (before.chain.id !== workflow.chain.id || after.chain.id !== workflow.chain.id) fail("ES3104", "ChainMismatch", "Rescue post-state snapshots must match the workflow chain.");
   const verification = verifyStateInvariants(before, after, rescueFinalStateInvariants(workflow));
   if (!verification.passed) fail("ES4022", "RescueInvariantFailed", "Post-execution state does not satisfy the rescue workflow invariants.", { failed: verification.results.filter((result) => !result.passed) });
   return { passed: true, results: verification.results };

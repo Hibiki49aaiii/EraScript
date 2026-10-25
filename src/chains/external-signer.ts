@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { EraDiagnosticError } from "../diagnostics.js";
+import { immutableSnapshot } from "../internal/snapshot.js";
 import type { SolanaAddress } from "./solana.js";
 import type { SuiAddress } from "./sui.js";
 import type { ChainFamily, ChainProfile } from "./types.js";
@@ -73,6 +74,7 @@ function stable(value: unknown): string {
 }
 
 function validPayload(payload: string, encoding: SigningPayloadEncoding): void {
+  if (typeof payload !== "string" || payload.length > 2_000_000 || !["base64", "hex", "utf8"].includes(encoding)) fail("ES4530", "InvalidSigningPayload", "Signing payload encoding/size is invalid.");
   if (encoding === "base64") {
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(payload) || payload.length % 4 !== 0 || Buffer.from(payload, "base64").toString("base64") !== payload) fail("ES4530", "InvalidSigningPayload", "Signing payload is not canonical base64.");
     return;
@@ -100,7 +102,7 @@ export function createMultichainSigningRequest(input: {
   if (!input.signer) fail("ES4531", "MissingSigningIdentity", "External signing request requires an explicit signer identity.");
   const nowMs = input.nowMs ?? Date.now();
   const ttlMs = input.ttlMs ?? 60_000;
-  if (!Number.isSafeInteger(nowMs) || nowMs < 0 || !Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > 10 * 60_000) fail("ES4532", "InvalidSigningRequestLifetime", "Signing request TTL must be a positive safe integer no longer than 10 minutes.", { nowMs, ttlMs });
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0 || !Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > 10 * 60_000 || !Number.isSafeInteger(nowMs + ttlMs)) fail("ES4532", "InvalidSigningRequestLifetime", "Signing request TTL must be a positive safe integer no longer than 10 minutes.", { nowMs, ttlMs });
   const requestId = input.requestId ?? randomBytes(16).toString("hex");
   const challenge = input.challenge ?? randomBytes(32).toString("hex");
   if (!/^[0-9a-fA-F-]{8,128}$/.test(requestId)) fail("ES4533", "InvalidSigningRequestId", "Signing request ID must be stable ASCII hex/UUID-like text.", { requestId });
@@ -123,25 +125,79 @@ export function createMultichainSigningRequest(input: {
   };
 }
 
+// Process-local accidental replay guard. The authority must also persist consumption
+// across processes/restarts. This cache is deliberately bounded and fails closed.
+const consumed = new Map<string, number>();
+
 export async function signWithMultichainExternalSigner(input: {
   signer: MultichainExternalSigner;
   request: MultichainSigningRequest;
   verifier: MultichainSignatureVerifier;
   verifierName: string;
   nowMs?: number;
+  /** Trusted clock injection for tests/hosts; never accept a clock from untrusted input. */
+  clock?: () => number;
 }): Promise<VerifiedMultichainSignature> {
-  const nowMs = input.nowMs ?? Date.now();
-  if (nowMs > input.request.expiresAtMs) fail("ES4535", "SigningRequestExpired", "External signing request expired before signing.", { requestId: input.request.requestId, expiresAtMs: input.request.expiresAtMs, nowMs });
-  const response = await input.signer.sign(input.request);
-  if (response.requestId !== input.request.requestId || response.payloadHash !== input.request.payloadHash || response.contextHash !== input.request.contextHash || response.challenge !== input.request.challenge) {
-    fail("ES4536", "SigningResponseBindingMismatch", "External signer response is not bound to the exact request payload/context/challenge.", { requestId: input.request.requestId });
+  const request = immutableSnapshot(input.request);
+  const verifier = input.verifier;
+  const verifierName = input.verifierName;
+  validPayload(request.payload, request.payloadEncoding);
+  if (request.kind !== "multichain-signing-request"
+    || request.payloadHash !== hash(`${request.payloadEncoding}:${request.payload}`)
+    || !/^0x[0-9a-f]{64}$/.test(request.contextHash)
+    || !/^[0-9a-fA-F-]{8,128}$/.test(request.requestId)
+    || !/^[0-9a-fA-F]{32,128}$/.test(request.challenge)
+    || ![request.signer, request.network, request.profileId, verifierName].every((v) => typeof v === "string" && v.trim().length > 0)
+    || !["evm", "solana", "sui"].includes(request.family)
+    || !["transaction-signer", "fee-payer", "sender", "gas-owner", "sponsor", "authority"].includes(request.role)) {
+    fail("ES4900", "InvalidExternalSigningRequest", "External signing request has invalid identity, payload hash, or binding fields.");
   }
-  if (response.signer !== input.request.signer) fail("ES4537", "SigningResponseIdentityMismatch", "External signer response claims a different signer identity.", { expected: input.request.signer, actual: response.signer });
-  if (!Number.isSafeInteger(response.respondedAtMs) || response.respondedAtMs < input.request.createdAtMs || response.respondedAtMs > input.request.expiresAtMs) fail("ES4538", "SigningResponseTimeInvalid", "External signer response timestamp is outside the request lifetime.", { respondedAtMs: response.respondedAtMs, createdAtMs: input.request.createdAtMs, expiresAtMs: input.request.expiresAtMs });
-  if (!response.signature) fail("ES4539", "MissingExternalSignature", "External signer returned an empty signature.");
-  const verified = await input.verifier({ request: input.request, response });
-  if (!verified) fail("ES4540", "MultichainSignatureVerificationFailed", "Family-specific verifier rejected the external signature or signed payload.", { verifier: input.verifierName, signer: input.request.signer });
-  return { kind: "verified-multichain-signature", request: input.request, response, verifier: input.verifierName, verified: true };
+  const ttl = request.expiresAtMs - request.createdAtMs;
+  if (!Number.isSafeInteger(request.createdAtMs) || request.createdAtMs < 0 || !Number.isSafeInteger(request.expiresAtMs) || ttl <= 0 || ttl > 600_000) fail("ES4532", "InvalidSigningRequestLifetime", "External signing request has invalid lifetime bounds.");
+  const clock = input.clock ?? (input.nowMs === undefined ? Date.now : () => input.nowMs!);
+  const startedAt = clock();
+  const monotonicStart = performance.now();
+  const assertLive = (): void => {
+    const observed = clock();
+    const now = Math.max(observed, startedAt + performance.now() - monotonicStart);
+    if (!Number.isFinite(observed) || !Number.isSafeInteger(startedAt) || observed < startedAt || now < request.createdAtMs || now >= request.expiresAtMs) {
+      fail("ES4535", "SigningRequestExpired", "Signing request is not live at the verifier's current clock.");
+    }
+  };
+  assertLive();
+  for (const [key, expiry] of consumed) if (expiry <= monotonicStart) consumed.delete(key);
+  const scope = `${request.family}:${request.network}:${request.signer}:`;
+  const keys = [`${scope}id:${request.requestId.toLowerCase()}`, `${scope}challenge:${request.challenge.toLowerCase()}`];
+  if (keys.some((key) => consumed.has(key))) fail("ES4901", "SigningRequestAlreadyConsumed", "Signing request ID or challenge was already reserved in this process.");
+  if (consumed.size + keys.length > 10_000) fail("ES4902", "SigningReplayCacheFull", "Signing replay guard capacity reached; wait for request expiry.");
+  // Reserve before awaiting. Even failure consumes the request to prevent retries
+  // after an ambiguous authority response; a retry needs a new request/challenge.
+  for (const key of keys) consumed.set(key, monotonicStart + request.expiresAtMs - startedAt);
+  const withinDeadline = async <T>(operation: () => Promise<T>): Promise<T> => {
+    assertLive();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const expiry = new Promise<never>((_resolve, reject) => {
+        const remaining = request.expiresAtMs - Math.max(clock(), startedAt + performance.now() - monotonicStart);
+        timer = setTimeout(() => reject(new EraDiagnosticError({ code: "ES4535", severity: "error", kind: "SigningRequestExpired", message: "External signing operation exceeded the request deadline." })), Math.max(1, Math.ceil(remaining)));
+      });
+      return await Promise.race([operation(), expiry]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+  const response = immutableSnapshot(await withinDeadline(() => input.signer.sign(request)));
+  assertLive();
+  if (!response || response.kind !== "multichain-signing-response" || response.requestId !== request.requestId || response.payloadHash !== request.payloadHash || response.contextHash !== request.contextHash || response.challenge !== request.challenge) {
+    fail("ES4536", "SigningResponseBindingMismatch", "External signer response is not bound to the exact request payload/context/challenge.", { requestId: request.requestId });
+  }
+  if (response.signer !== request.signer) fail("ES4537", "SigningResponseIdentityMismatch", "External signer response claims a different signer identity.");
+  if (!Number.isSafeInteger(response.respondedAtMs) || response.respondedAtMs < request.createdAtMs || response.respondedAtMs >= request.expiresAtMs) fail("ES4538", "SigningResponseTimeInvalid", "External signer response timestamp is outside the request lifetime.");
+  if (typeof response.signature !== "string" || !response.signature) fail("ES4539", "MissingExternalSignature", "External signer returned an empty signature.");
+  const verified = await withinDeadline(() => Promise.resolve(verifier({ request, response })));
+  assertLive();
+  if (verified !== true) fail("ES4540", "MultichainSignatureVerificationFailed", "Family-specific verifier rejected the external signature or signed payload.", { verifier: verifierName, signer: request.signer });
+  return Object.freeze({ kind: "verified-multichain-signature", request, response, verifier: verifierName, verified: true });
 }
 
 export function solanaSigningIdentity(address: SolanaAddress): string { return address; }

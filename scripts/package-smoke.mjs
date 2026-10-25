@@ -17,7 +17,10 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(
   readFileSync(join(repositoryRoot, "package.json"), "utf8"),
 );
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+// npm.cmd cannot be spawned directly without a shell on Windows. Execute the
+// npm JS entry point using Node so paths never become shell command text.
+const npmCli = process.env.npm_execpath;
+assert.ok(npmCli && existsSync(npmCli), "run the package gate through npm run test:package");
 const childEnv = {
   ...process.env,
   NO_COLOR: "1",
@@ -30,6 +33,8 @@ function run(command, args, { cwd = repositoryRoot } = {}) {
     cwd,
     encoding: "utf8",
     env: childEnv,
+    timeout: 180_000,
+    maxBuffer: 16 * 1024 * 1024,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -59,7 +64,7 @@ try {
   mkdirSync(packDirectory, { recursive: true });
   mkdirSync(fixture, { recursive: true });
 
-  const packed = run(npmCommand, [
+  const packed = run(process.execPath, [npmCli,
     "pack",
     "--json",
     "--pack-destination",
@@ -76,6 +81,7 @@ try {
   const packagePaths = normalizedPackagePaths(packResult);
   const packagePathSet = new Set(packagePaths);
   const requiredPaths = [
+    "SECURITY.md", "CHANGELOG.md", "docs/WHITEHAT_GUIDE.md", "docs/RELEASE.md", "docs/VERIFICATION_TRUST_MODEL.md", "examples/whitehat-offline.era",
     "dist/src/index.js",
     "dist/src/index.d.ts",
     "dist/src/cli.js",
@@ -99,6 +105,10 @@ try {
     false,
     "package must not contain compiled test output under dist/test",
   );
+  for (const path of packagePaths) {
+    assert.ok(path.startsWith("dist/src/") || ["package.json", "README.md", "LICENSE", ...requiredPaths].includes(path), `Unexpected packed file: ${path}`);
+    assert.equal(/(^|\/)(\.env(?:\.|$)|node_modules|test|\.git)/.test(path), false, `Unsafe packed path: ${path}`);
+  }
 
   const tarball = join(packDirectory, String(packResult.filename));
   assert.ok(existsSync(tarball), `packed tarball does not exist: ${tarball}`);
@@ -117,8 +127,8 @@ try {
   );
 
   run(
-    npmCommand,
-    ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
+    process.execPath,
+    [npmCli, "install", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
     { cwd: fixture },
   );
 
@@ -152,6 +162,7 @@ try {
     { cwd: fixture },
   );
   assert.equal(imported.stdout.trim(), "imports-ok");
+  run(process.execPath, ["--input-type=module", "--eval", 'import assert from "node:assert/strict"; await assert.rejects(import("erascript-lang/dist/src/chains/verification.js"), {code:"ERR_PACKAGE_PATH_NOT_EXPORTED"});'], { cwd: fixture });
 
   const version = run(process.execPath, [installedCli, "--version"], {
     cwd: fixture,
@@ -190,6 +201,26 @@ try {
   );
   assert.equal(builtExecution.stdout.trim(), "true");
 
+  const example = join(fixture, "whitehat-offline.era");
+  writeFileSync(example, readFileSync(join(installedRoot, "examples/whitehat-offline.era")));
+  const checked = JSON.parse(run(process.execPath, [installedCli, "check", example, "--json"], { cwd: fixture }).stdout);
+  assert.equal(checked.ok, true);
+  const decoded = JSON.parse(run(process.execPath, [installedCli, "run", example], { cwd: fixture }).stdout);
+  assert.deepEqual(decoded, { offline: true, chainId: 1, selector: "0xa9059cbb", recipient: "0x0000000000000000000000000000000000000022", rawAmount: "100", executionVerified: false, recoveryVerified: false });
+  run(process.execPath, ["--input-type=module", "--eval", [
+    'import {writeFileSync} from "node:fs";',
+    'import {Ethereum, verificationReportHash} from "erascript-lang/web3";',
+    'const checks=[{id:"offline.example",status:"fail",message:"No execution evidence collected."}];',
+    'writeFileSync("offline-report.json",JSON.stringify({kind:"rescue-verification-report",chain:Ethereum,state:"NOT_READY",checks,reportHash:verificationReportHash(Ethereum,"NOT_READY",checks),readyForBroadcast:false,recoveryObserved:false,verifiedRecovery:false}));'
+  ].join(" ")], { cwd: fixture });
+  const integrity = JSON.parse(run(process.execPath, [installedCli, "verify", "offline-report.json", "--integrity-only", "--json"], { cwd: fixture }).stdout);
+  assert.equal(integrity.integrity, true);
+  assert.equal(integrity.authenticated, false);
+  assert.equal(integrity.stateRequirementMet, null);
+  const rejected = spawnSync(process.execPath, [installedCli, "verify", "offline-report.json", "--require", "VERIFIED_RECOVERY", "--json"], { cwd: fixture, encoding: "utf8", env: childEnv, timeout: 30_000 });
+  assert.equal(rejected.status, 1);
+  assert.equal(JSON.parse(rejected.stdout).ok, false);
+
   console.log(
     JSON.stringify(
       {
@@ -199,7 +230,8 @@ try {
         runtimeIncluded: true,
         testsExcluded: true,
         imports: [".", "./web3", "./chains", "./privacy"],
-        cli: ["--version", "check", "run", "build"],
+        cli: ["--version", "check", "check --json", "run", "build", "verify --integrity-only", "verify --require (denial)"],
+        offlineCalldataExample: true,
       },
       null,
       2,

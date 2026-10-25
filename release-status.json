@@ -1,0 +1,11 @@
+{
+  "version": "0.19.0-rc.1",
+  "publicationApproved": false,
+  "approvedCommit": null,
+  "blockers": [
+    { "issue": 25, "requirement": "Authenticated finalized execution, raw signed transaction semantics and exact safe-wallet recovery credit remain unproven." },
+    { "issue": 26, "requirement": "All terminal proof paths require independent observer provenance, freshness, reorg handling and protocol-specific finality evidence." },
+    { "issue": 27, "requirement": "Real-key authority deployment, durable replay enforcement, least privilege and hostile-runtime isolation require an operational design and validation." },
+    { "issue": 31, "requirement": "Independent security review, remaining live-SDK advisory disposition and release-owner approval are required before publication." }
+  ]
+}

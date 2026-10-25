@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   statSync,
@@ -61,6 +62,15 @@ function projectRelativePath(project: EraProject, fileName: string): string {
       "EraProjectPathEscape",
       `EraScript project module escapes project root: ${fileName}`,
     );
+  }
+  let current = resolve(project.root);
+  for (const part of relativePath.split(sep).filter(Boolean)) {
+    current = resolve(current, part);
+    try {
+      if (lstatSync(current).isSymbolicLink()) throw new EraProjectBuildError("EraProjectSymlink", "Project builds do not follow linked source or output paths.");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
   return relativePath;
 }
@@ -176,6 +186,10 @@ function rewriteEraSpecifiers(
 }
 
 export function buildEraProject(project: EraProject): EraProjectBuildResult {
+  const outRelative = projectRelativePath(project, resolve(project.outDir));
+  if (!outRelative || [".git", "node_modules"].includes(outRelative.split(sep)[0]!)) {
+    throw new EraProjectBuildError("UnsafeEraProjectOutDir", "Project outDir must be a dedicated directory within the project, outside .git/node_modules.");
+  }
   const modules = new Map<string, EraBuildModule>();
   const assets = new Set<string>();
 
@@ -229,6 +243,18 @@ export function buildEraProject(project: EraProject): EraProjectBuildResult {
   };
 
   visitEra(project.entry);
+
+  const sources = new Set([...modules.keys(), ...assets].map((path) => resolve(path).toLowerCase()));
+  const outputs = new Set<string>();
+  for (const path of [
+    ...[...modules.keys()].flatMap((file) => { const output = outputPathForEra(project, file); return [output, `${output}.map`]; }),
+    ...[...assets].map((file) => resolve(project.outDir, projectRelativePath(project, file))),
+  ]) {
+    projectRelativePath(project, path);
+    const normalized = resolve(path).toLowerCase();
+    if (sources.has(normalized) || outputs.has(normalized)) throw new EraProjectBuildError("EraProjectOutputCollision", "Build outputs collide with a source file or another generated output.");
+    outputs.add(normalized);
+  }
 
   mkdirSync(project.outDir, { recursive: true });
 

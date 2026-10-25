@@ -3,37 +3,45 @@ name: Core CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "README.md"
-      - "docs/**"
   pull_request:
-    paths-ignore:
-      - "README.md"
-      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: core-ci-v012-${{ github.workflow }}-${{ github.ref }}
+  group: core-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   deterministic:
-    name: Deterministic core
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
       - name: Install locked dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Typecheck
         run: npm run check
       - name: Core tests
         run: npm run test:core
       - name: Core tests with forced parent color
-        run: npm run test:core
+        run: node --test dist/test/*.test.js
         env:
           FORCE_COLOR: "1"
       - name: Installed package smoke and content gate
         run: npm run test:package
+      - name: Release scripts regression tests
+        run: node --test scripts/test/*.test.mjs

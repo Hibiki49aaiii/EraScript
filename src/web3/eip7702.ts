@@ -1,6 +1,7 @@
 import type { Hex } from "viem";
 import { verifyAuthorization } from "viem/utils";
 import { EraDiagnosticError } from "../diagnostics.js";
+import { immutableSnapshot } from "../internal/snapshot.js";
 import { accountForCapability, sameAddress, type SignerCapability, type SignerPolicy } from "./capabilities.js";
 import { assertRpcChain, type ViemClientLike } from "./rpc.js";
 import { address, type Address, type EvmChain } from "./types.js";
@@ -135,6 +136,7 @@ async function validateSignedResponse<C extends EvmChain>(request: Eip7702Author
   r: string;
   s: string;
 }): Promise<SignedEip7702Authorization<C>> {
+  response = immutableSnapshot(response);
   if (!sameAddress(response.address, request.delegate) || response.chainId !== request.chainId || response.nonce !== request.nonce) {
     fail("ES4107", "Eip7702SignerResponseMismatch", "Signed EIP-7702 authorization does not match the requested delegate/chainId/nonce.", {
       requestedDelegate: request.delegate,
@@ -175,6 +177,7 @@ async function validateSignedResponse<C extends EvmChain>(request: Eip7702Author
 }
 
 export async function signEip7702WithCapability<C extends EvmChain>(capability: SignerCapability<C>, request: Eip7702AuthorizationRequest<C>): Promise<SignedEip7702Authorization<C>> {
+  request = immutableSnapshot(request);
   assertEip7702Policy(capability.policy, request);
   const account = accountForCapability(capability, request.authority);
   const signAuthorization = account.signAuthorization as unknown as (parameters: {
@@ -201,6 +204,7 @@ export interface Eip7702ExternalSigner<C extends EvmChain = EvmChain> {
 }
 
 export async function signEip7702WithExternalSigner<C extends EvmChain>(signer: Eip7702ExternalSigner<C>, policy: SignerPolicy<C>, request: Eip7702AuthorizationRequest<C>): Promise<SignedEip7702Authorization<C>> {
+  request = immutableSnapshot(request);
   if (signer.chain.id !== request.chain.id || policy.chain.id !== request.chain.id) fail("ES3104", "ChainMismatch", "External EIP-7702 signer, policy, and authorization must share one chain binding.");
   if (!sameAddress(signer.address, request.authority)) fail("ES4109", "Eip7702AuthorityMismatch", "External signer address does not match the EIP-7702 authority.", { signer: signer.address, authority: request.authority });
   assertEip7702Policy(policy, request);

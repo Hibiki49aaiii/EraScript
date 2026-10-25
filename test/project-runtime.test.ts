@@ -6,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { typecheck } from "../src/typecheck.js";
@@ -58,7 +58,7 @@ test("typecheck follows explicit relative .era imports and remaps imported diagn
 
     const result = typecheck(mainSource, main);
     const importedDiagnostic = result.diagnostics.find(
-      (diagnostic) => diagnostic.file?.fileName === helper,
+      (diagnostic) => diagnostic.file && resolve(diagnostic.file.fileName) === resolve(helper),
     );
 
     assert.ok(

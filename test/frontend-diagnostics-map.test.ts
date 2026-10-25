@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import ts from "typescript";
 import { compile } from "../src/compiler.js";
@@ -160,7 +160,7 @@ test("era check --json exposes original .era filename and coordinates", () => {
     const diagnostic = payload.diagnostics.find((item) => item.code === "TS2304");
     assert.ok(diagnostic);
     const expected = lineColumn(source, source.indexOf("missingValue"));
-    assert.equal(diagnostic.file, file);
+    assert.equal(resolve(diagnostic.file!), resolve(file));
     assert.equal(diagnostic.line, expected.line);
     assert.equal(diagnostic.column, expected.column);
   } finally {

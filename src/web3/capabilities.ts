@@ -1,6 +1,7 @@
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { EraDiagnosticError } from "../diagnostics.js";
+import { immutableSnapshot } from "../internal/snapshot.js";
 import type { PrivateKeyRef } from "./secrets.js";
 import {
   authorizationListForViem,
@@ -118,6 +119,10 @@ export function assertSignerCapability<C extends EvmChain>(capability: SignerCap
 
 export function assertTypedDataPolicy<C extends EvmChain, P extends string>(chain: C, policy: SignerPolicy<C>, envelope: TypedDataEnvelope<C, P>): void {
   if (chain.id !== envelope.chain.id || policy.chain.id !== chain.id) fail("ES3104", "ChainMismatch", "Typed data and signer policy are bound to different chains.");
+  if (envelope.domain.chainId === undefined || String(envelope.domain.chainId) !== String(chain.id)
+    || (envelope.domain.verifyingContract ?? "").toLowerCase() !== (envelope.verifyingContract ?? "").toLowerCase()) {
+    fail("ES4904", "TypedDataPolicyBindingMismatch", "The signed EIP-712 domain must match the policy chain and verifying contract.");
+  }
   const allowedTypes = policy.allowedTypedDataPrimaryTypes ?? [];
   if (!allowedTypes.includes(envelope.primaryType)) fail("ES3815", "TypedDataPrimaryTypeNotAuthorized", "EIP-712 primary type is outside the signer policy allowlist.", { primaryType: envelope.primaryType });
   if (envelope.verifyingContract) {
@@ -148,6 +153,7 @@ export function accountForCapability<C extends EvmChain>(capability: SignerCapab
 }
 
 export async function signSimulatedWithCapability<C extends EvmChain>(capability: SignerCapability<C>, simulated: SimulatedTx<C>): Promise<SignedTx<C>> {
+  simulated = immutableSnapshot(simulated);
   assertSignerCapability(capability, simulated);
   const account = accountForCapability(capability, simulated.intent.from);
   const authorizationList = authorizationListForViem(simulated.intent);
@@ -171,6 +177,7 @@ export async function signSimulatedWithCapability<C extends EvmChain>(capability
 }
 
 export async function signTypedDataWithCapability<C extends EvmChain, P extends string>(capability: SignerCapability<C>, envelope: TypedDataEnvelope<C, P>): Promise<TypedSignature<C, P>> {
+  envelope = immutableSnapshot(envelope);
   assertTypedDataPolicy(capability.chain, capability.policy, envelope);
   const account = accountForCapability(capability);
   const signTypedData = account.signTypedData as unknown as (request: Record<string, unknown>) => Promise<Hex>;

@@ -1,22 +1,13 @@
 name: Dependency Audit
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "test/live/waku-deps/package.json"
-      - "test/live/waku-deps/package-lock.json"
-      - ".github/workflows/dependency-audit.yml"
   pull_request:
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "test/live/waku-deps/package.json"
-      - "test/live/waku-deps/package-lock.json"
-      - ".github/workflows/dependency-audit.yml"
   schedule:
     - cron: "47 4 * * 1"
 
@@ -30,10 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Validate locked production install
         run: npm ci --omit=dev --ignore-scripts
       - name: Fail on production high/critical advisories
@@ -44,16 +38,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Capture root dev/test audit JSON
         shell: bash
         run: |
-          npm audit --json > root-dev-audit.json || true
-          node -e 'const fs=require("node:fs"); const a=JSON.parse(fs.readFileSync("root-dev-audit.json","utf8")); console.log("root dev/test vulnerabilities:", JSON.stringify(a.metadata?.vulnerabilities ?? {}));'
-      - uses: actions/upload-artifact@v4
+          npm run audit:evidence -- root-dev-audit.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: root-dev-audit
           path: root-dev-audit.json
@@ -65,18 +61,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Validate isolated locked install without scripts
         run: npm ci --prefix test/live/waku-deps --ignore-scripts
       - name: Capture isolated Waku audit JSON
         shell: bash
         run: |
-          npm audit --prefix test/live/waku-deps --json > waku-audit.json || true
-          node -e 'const fs=require("node:fs"); const a=JSON.parse(fs.readFileSync("waku-audit.json","utf8")); console.log("isolated Waku vulnerabilities:", JSON.stringify(a.metadata?.vulnerabilities ?? {}));'
-      - uses: actions/upload-artifact@v4
+          npm run audit:evidence -- waku-audit.json test/live/waku-deps
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: isolated-waku-audit
           path: waku-audit.json

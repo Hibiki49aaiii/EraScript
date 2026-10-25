@@ -1,11 +1,11 @@
 {
   "name": "erascript-lang",
-  "version": "0.18.0",
+  "version": "0.19.0-rc.1",
   "description": "EraScript — an AI-first, Node.js/TypeScript-compatible language for safer multi-chain Web3 automation.",
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=20.6.0"
+    "node": "^22.0.0 || ^24.0.0"
   },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -34,16 +34,26 @@
   "files": [
     "dist/src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "docs/WHITEHAT_GUIDE.md",
+    "docs/RELEASE.md",
+    "docs/VERIFICATION_TRUST_MODEL.md",
+    "examples/whitehat-offline.era"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
+    "build:package": "node scripts/build.mjs --package",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run test:core",
     "dev": "node --enable-source-maps dist/src/cli.js",
     "test:core": "npm run build && node --test dist/test/*.test.js",
     "test:live": "npm run build && node --test dist/test/live/*.test.js",
-    "test:package": "npm run build && node scripts/package-smoke.mjs"
+    "test:package": "npm run build:package && node scripts/package-smoke.mjs",
+    "audit:evidence": "node scripts/audit-evidence.mjs",
+    "release:prepare": "npm run check && npm run test:core && node --test scripts/test/*.test.mjs && npm run test:package && node scripts/release-prepare.mjs",
+    "prepublishOnly": "node scripts/check-release.mjs"
   },
   "dependencies": {
     "typescript": "^5.9.2",

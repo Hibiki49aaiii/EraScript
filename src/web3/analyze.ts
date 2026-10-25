@@ -1,6 +1,7 @@
 import ts from "typescript";
 import type { EraDiagnostic } from "../diagnostics.js";
 import type { UnsafeBoundaryAudit } from "./unsafe.js";
+import { secretResolver } from "./secret-analysis.js";
 
 export interface Web3SourceAnalysis {
   readonly diagnostics: readonly EraDiagnostic[];
@@ -49,19 +50,6 @@ function validateFixedHex(resolveLocation: NodeLocationResolver, node: ts.Node, 
       : `Provide exactly ${expectedDigits} hexadecimal digits with a 0x prefix.`,
     details: { expectedHexDigits: expectedDigits, actualHexDigits: digits.length },
   };
-}
-
-function processEnvName(node: ts.Node): string | undefined {
-  if (ts.isPropertyAccessExpression(node)) {
-    const parent = node.expression;
-    if (ts.isPropertyAccessExpression(parent) && ts.isIdentifier(parent.expression) && parent.expression.text === "process" && parent.name.text === "env") return node.name.text;
-  }
-  if (ts.isElementAccessExpression(node)) {
-    const parent = node.expression;
-    const key = literalValue(node.argumentExpression);
-    if (key && ts.isPropertyAccessExpression(parent) && ts.isIdentifier(parent.expression) && parent.expression.text === "process" && parent.name.text === "env") return key;
-  }
-  return undefined;
 }
 
 function looksLikePrivateSecret(name: string): boolean {
@@ -146,13 +134,14 @@ export function analyzeWeb3Source(
   locationResolver?: Web3SourceLocationResolver,
 ): Web3SourceAnalysis {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+  const secrets = secretResolver(sourceFile);
   const diagnostics: EraDiagnostic[] = [];
   const unsafeBoundaries: UnsafeBoundaryAudit[] = [];
   const resolveLocation: NodeLocationResolver = (node) =>
     sourceLocation(sourceFile, node, locationResolver);
 
   const visit = (node: ts.Node): void => {
-    const envName = processEnvName(node);
+    const envName = secrets.envName(node);
     if (envName && looksLikePrivateSecret(envName)) {
       diagnostics.push({
         code: "ES3820",
@@ -218,8 +207,8 @@ export function analyzeWeb3Source(
         }
       }
 
-      if (name === "privateKeyToAccount") {
-        const value = literalValue(node.arguments[0]);
+      if (secrets.isKeyFactory(node.expression)) {
+        const value = secrets.literal(node.arguments[0]);
         if (value && /^0x[0-9a-fA-F]{64}$/.test(value)) {
           diagnostics.push({
             code: "ES3821",
@@ -237,6 +226,7 @@ export function analyzeWeb3Source(
   };
 
   visit(sourceFile);
+  if (secrets.truncated) diagnostics.push({ code: "ES4909", severity: "error", kind: "SecretAnalysisLimit", message: "File-local secret alias analysis exceeded its size/depth/work limit; review and simplify the source before proceeding." });
   return { diagnostics, unsafeBoundaries };
 }
 

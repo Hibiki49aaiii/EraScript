@@ -1,5 +1,6 @@
-import { parseTransaction, recoverTransactionAddress, type Hex, type TransactionSerialized } from "viem";
+import { compactSignatureToSignature, parseTransaction, recoverAddress, recoverTransactionAddress, type Hex, type TransactionSerialized } from "viem";
 import { EraDiagnosticError } from "../diagnostics.js";
+import { immutableSnapshot } from "../internal/snapshot.js";
 import { assertSignerPolicy, assertTypedDataPolicy, sameAddress, type SignerPolicy } from "./capabilities.js";
 import {
   signEip7702WithExternalSigner,
@@ -126,8 +127,8 @@ async function assertExternalRawTransaction<C extends EvmChain>(request: Externa
   try {
     parsed = parseTransaction(raw as TransactionSerialized) as unknown as Record<string, unknown>;
     recovered = await recoverTransactionAddress({ serializedTransaction: raw as TransactionSerialized });
-  } catch (error) {
-    return fail("ES3832", "InvalidExternalSignerResponse", "External signer returned a raw transaction that viem could not parse/recover.", { cause: error instanceof Error ? error.message : String(error) });
+  } catch {
+    return fail("ES3832", "InvalidExternalSignerResponse", "External signer returned a raw transaction that viem could not parse/recover.");
   }
   if (!sameAddress(recovered, request.from)) mismatch("from", request.from, recovered);
   if (integer(parsed.chainId) !== BigInt(request.chain.id)) mismatch("chainId", request.chain.id, parsed.chainId);
@@ -137,6 +138,7 @@ async function assertExternalRawTransaction<C extends EvmChain>(request: Externa
   if ((integer(parsed.value) ?? 0n) !== request.value) mismatch("value", request.value, parsed.value ?? 0n);
   if (!sameHex(parsed.data, request.data)) mismatch("data", request.data ?? "0x", parsed.data ?? "0x");
   if (parsed.type !== request.transactionType) mismatch("type", request.transactionType, parsed.type);
+  if (Array.isArray(parsed.accessList) && parsed.accessList.length > 0) mismatch("accessList", "empty", "nonempty");
 
   if (request.fee.type === "legacy") {
     if (integer(parsed.gasPrice) !== request.fee.gasPrice) mismatch("gasPrice", request.fee.gasPrice, parsed.gasPrice);
@@ -162,11 +164,12 @@ async function assertExternalRawTransaction<C extends EvmChain>(request: Externa
 }
 
 export async function signSimulatedWithExternalSigner<C extends EvmChain>(capability: ExternalSignerCapability<C>, simulated: SimulatedTx<C>): Promise<SignedTx<C>> {
+  simulated = immutableSnapshot(simulated);
   assertSignerPolicy(capability.chain, capability.policy, simulated);
   if (!simulated.intent.from) fail("ES3830", "MissingExternalSignerAddress", "External signing requires an explicit transaction sender.");
   if (!sameAddress(capability.signer.address, simulated.intent.from)) fail("ES3831", "ExternalSignerMismatch", "External signer address does not match the transaction sender.", { signer: capability.signer.address, from: simulated.intent.from });
 
-  const request = externalTransactionRequest(simulated);
+  const request = immutableSnapshot(externalTransactionRequest(simulated));
   const raw = await capability.signer.signTransaction(request);
   if (!/^0x[0-9a-fA-F]+$/.test(raw) || raw.length % 2 !== 0) fail("ES3832", "InvalidExternalSignerResponse", "External signer returned malformed raw transaction hexadecimal.");
   await assertExternalRawTransaction(request, raw);
@@ -174,10 +177,24 @@ export async function signSimulatedWithExternalSigner<C extends EvmChain>(capabi
 }
 
 export async function signTypedDataWithExternalSigner<C extends EvmChain, P extends string>(capability: ExternalSignerCapability<C>, envelope: TypedDataEnvelope<C, P>): Promise<TypedSignature<C, P>> {
+  envelope = immutableSnapshot(envelope);
   assertTypedDataPolicy(capability.chain, capability.policy, envelope);
   if (!capability.signer.signTypedData) fail("ES3833", "ExternalTypedDataSigningUnsupported", "External signer does not expose EIP-712 signing.", { signerId: capability.signer.id ?? null });
-  const signature = await capability.signer.signTypedData({ kind: "external-typed-data-signing-request", chain: capability.chain, signer: capability.signer.address, envelope });
-  return typedSignature(signature, envelope, capability.signer.address);
+  const signer = capability.signer.address;
+  const request = immutableSnapshot({ kind: "external-typed-data-signing-request" as const, chain: capability.chain, signer, envelope });
+  const signature = await capability.signer.signTypedData(request);
+  const result = typedSignature(signature, envelope, signer);
+  let recovered: string;
+  try {
+    const normalized = signature.length === 130
+      ? compactSignatureToSignature({ r: signature.slice(0, 66) as Hex, yParityAndS: `0x${signature.slice(66)}` as Hex })
+      : signature;
+    recovered = await recoverAddress({ hash: result.digest, signature: normalized });
+  } catch {
+    return fail("ES4903", "ExternalTypedSignatureVerificationFailed", "External EIP-712 signature could not be verified against the approved digest.");
+  }
+  if (!sameAddress(recovered, signer)) fail("ES4903", "ExternalTypedSignatureVerificationFailed", "External EIP-712 signature does not match the approved signer and digest.");
+  return immutableSnapshot(result);
 }
 
 export async function signEip7702WithExternalCapability<C extends EvmChain>(capability: ExternalSignerCapability<C>, request: Eip7702AuthorizationRequest<C>): Promise<SignedEip7702Authorization<C>> {
