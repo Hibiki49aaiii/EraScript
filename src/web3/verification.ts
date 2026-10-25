@@ -224,16 +224,19 @@ export function verifyCompletedRescue<C extends EvmChain>(input: {
   try {
     const finalState = assertRescueFinalState(input.workflow, input.before, input.after);
     checks.push(check("recovery.final-state", "pass", "Post-execution state satisfies all configured rescue invariants.", { invariants: finalState.results.length, afterBlock: input.after.blockNumber.toString() }));
-    if (input.finality === "finalized") {
-      checks.push(check("recovery.finality", "pass", "Recovery state evidence is declared finalized by the caller's chain-finality evidence.", { finality: input.finality }));
-      return report(input.workflow.chain, "VERIFIED_RECOVERY", checks, unsafeBoundaries);
+    if (input.workflow.assets.length === 0) {
+      checks.push(check("recovery.native-credit", "fail", "Victim native-balance depletion alone cannot establish safe-wallet native credit; a verified native recovery objective is required."));
+      return report(input.workflow.chain, "NOT_READY", checks, unsafeBoundaries);
     }
+    // The legacy input.finality string and caller-provided balance snapshots are not authenticated chain-finality evidence.
+    // Until an authorized verifier checks transaction, provenance, calldata and post-state, terminal recovery is forbidden.
     checks.push(check(
       "recovery.finality",
       "warning",
-      "Recovery objective is observed, but the evidence has not reached finalized chain state and can still be affected by reorg semantics.",
+      "Caller-reported finality is insufficient for VERIFIED_RECOVERY; independently verified execution/finality and exact recipient-credit evidence are required.",
       { finality: input.finality },
     ));
+    checks.push(check("recovery.provenance", "warning", "The balance snapshots and signed transaction semantics have not been independently bound to an authenticated finalized execution."));
     return report(input.workflow.chain, "RECOVERY_OBSERVED", checks, unsafeBoundaries);
   } catch (error) {
     if (!(error instanceof EraDiagnosticError)) throw error;

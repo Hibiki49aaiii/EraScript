@@ -7,6 +7,7 @@ import {
   balanceSnapshot,
   defineRescueWorkflow,
   defineToken,
+  encodeCall,
   defineTransactionGraph,
   draftTransaction,
   gas,
@@ -32,9 +33,17 @@ const token = defineToken({
   decimals: 18,
 });
 
+const transferAbi = [{
+  type: "function",
+  name: "transfer",
+  stateMutability: "nonpayable",
+  inputs: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
+  outputs: [{ name: "success", type: "bool" }],
+}] as const;
+
 function signed(from: typeof victim | typeof safe, to: typeof victim | typeof safe | typeof claimContract | typeof token.address, nonceValue: number, raw: `0x${string}`): SignedTx<typeof Ethereum> {
   const prepared = prepareTransaction(
-    draftTransaction({ chain: Ethereum, from, to }),
+    draftTransaction({ chain: Ethereum, from, to, ...(to === token.address ? { data: encodeCall(transferAbi, "transfer", [safe, 100n]) } : {}) }),
     { nonce: nonce(Ethereum, nonceValue, "explicit"), gas: gas(100_000n), fees: { type: "legacy", gasPrice: weiPerGas(1n) } },
   );
   return signSimulated(recordSimulation(prepared, { status: "success", blockNumber: 100n, blockHash: `0x${"aa".repeat(32)}`, stateOverrides: false }), raw);
@@ -120,4 +129,67 @@ test("rescue final-state invariants prove victim cleared and safe received expec
   const result = assertRescueFinalState(workflow, before, after);
   assert.equal(result.passed, true);
   assert.ok(result.results.every((item) => item.passed));
+});
+
+test("token rescue rejects omitted and zero safe-wallet objectives", () => {
+  const graph = defineTransactionGraph(Ethereum, completeNodes());
+  const base = { chain: Ethereum, victim, safe, assets: [token], graph };
+  for (const expectedRecoveries of [undefined, [], [tokenAmountRaw(token, 0n)]]) {
+    assert.throws(
+      () => defineRescueWorkflow({ ...base, ...(expectedRecoveries === undefined ? {} : { expectedRecoveries }) }),
+      (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === (expectedRecoveries?.length ? "ES4014" : "ES4993"),
+    );
+  }
+});
+
+test("token rescue rejects duplicate recovery objectives and duplicate token assets", () => {
+  const graph = defineTransactionGraph(Ethereum, completeNodes());
+  const target = tokenAmountRaw(token, 100n);
+  assert.throws(
+    () => defineRescueWorkflow({ chain: Ethereum, victim, safe, assets: [token], graph, expectedRecoveries: [target, target] }),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4015",
+  );
+  assert.throws(
+    () => defineRescueWorkflow({ chain: Ethereum, victim, safe, assets: [token, token], graph, expectedRecoveries: [target] }),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4016",
+  );
+});
+
+test("token rescue cannot have the same victim and safe destination", () => {
+  const graph = defineTransactionGraph(Ethereum, completeNodes());
+  assert.throws(
+    () => defineRescueWorkflow({ chain: Ethereum, victim, safe: victim, assets: [token], graph, expectedRecoveries: [tokenAmountRaw(token, 100n)] }),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4013",
+  );
+});
+
+test("balance snapshots refuse conflicting duplicate token entries", () => {
+  const amount = tokenAmountRaw(token, 100n);
+  assert.throws(
+    () => balanceSnapshot({ chain: Ethereum, blockNumber: 101n, native: [], tokens: [
+      { account: safe, token, balance: amount },
+      { account: safe, token, balance: tokenAmountRaw(token, 0n) },
+    ] }),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4023",
+  );
+});
+
+test("token rescue rejects ERC-20 calldata redirected to a different recipient", () => {
+  const nodes = completeNodes().map((node) => node.id === "rescue-token"
+    ? { ...node, tx: { ...node.tx, intent: { ...node.tx.intent, data: encodeCall(transferAbi, "transfer", [victim, 100n]) } } }
+    : node);
+  assert.throws(
+    () => defineTransactionGraph(Ethereum, nodes),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4991",
+  );
+});
+
+test("token rescue rejects zero ERC-20 transfer amount", () => {
+  const nodes = completeNodes().map((node) => node.id === "rescue-token"
+    ? { ...node, tx: { ...node.tx, intent: { ...node.tx.intent, data: encodeCall(transferAbi, "transfer", [safe, 0n]) } } }
+    : node);
+  assert.throws(
+    () => defineTransactionGraph(Ethereum, nodes),
+    (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4991",
+  );
 });

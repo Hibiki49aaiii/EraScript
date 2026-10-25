@@ -1,6 +1,7 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { IncludedTx, ConfirmedTx, FinalizedTx } from "../web3/tx.js";
 import type { EvmChain } from "../web3/types.js";
+import { assertEvmExecutionQuorumIntegrity, type EvmExecutionQuorum } from "./evm-execution-quorum.js";
 import type { JitoBundleStatusEvidence, JitoBundleSubmitted } from "./jito.js";
 import type { RollupSettlementEvidence } from "./rollup-finality.js";
 import type { SolanaSignatureStatusEvidence, SolanaSubmittedTransaction } from "./solana-adapter.js";
@@ -32,7 +33,7 @@ export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmC
     },
   ];
 
-  let state: "NOT_READY" | "EXECUTION_OBSERVED" | "VERIFIED_FINALITY" = transaction.receipt.status === "success" ? "EXECUTION_OBSERVED" : "NOT_READY";
+  let state: "NOT_READY" | "EXECUTION_OBSERVED" = transaction.receipt.status === "success" ? "EXECUTION_OBSERVED" : "NOT_READY";
 
   if (profile.finality.kind === "evm-rollup") {
     if (!settlement) {
@@ -46,8 +47,7 @@ export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmC
         checks.push({ id: "evm.rollup-settlement", status: "fail", message: "Rollup settlement evidence is not bound to this exact L2 transaction/block." });
         state = "NOT_READY";
       } else if (settlement.stage === "l1-finalized") {
-        checks.push({ id: "evm.rollup-settlement", status: "pass", message: "Protocol-specific adapter reports the L2 transaction as L1-finalized.", details: { protocol: settlement.protocol, adapter: settlement.adapter, l1BlockNumber: settlement.l1Anchor?.blockNumber.toString() ?? null } });
-        if (transaction.receipt.status === "success") state = "VERIFIED_FINALITY";
+        checks.push({ id: "evm.rollup-settlement", status: "warning", message: "L1-finalized settlement is asserted, but this direct adapter cannot authenticate the external evidence source or establish an independently verified terminal state.", details: { protocol: settlement.protocol, adapter: settlement.adapter, l1BlockNumber: settlement.l1Anchor?.blockNumber.toString() ?? null } });
       } else {
         checks.push({ id: "evm.rollup-settlement", status: "warning", message: `Rollup settlement has reached '${settlement.stage}', but not L1 finalized settlement.`, details: { protocol: settlement.protocol, adapter: settlement.adapter } });
       }
@@ -57,8 +57,7 @@ export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmC
       checks.push({ id: "evm.rollup-settlement", status: "fail", message: "Rollup settlement evidence was supplied for a non-rollup EVM profile." });
       state = "NOT_READY";
     } else if (transaction.state === "finalized" && transaction.receipt.status === "success") {
-      checks.push({ id: "evm.finality", status: "pass", message: "Transaction has reached the chain profile's finalized EVM state." });
-      state = "VERIFIED_FINALITY";
+      checks.push({ id: "evm.finality", status: "warning", message: "Caller-supplied finalized transaction state is not independent chain-finality evidence; use the verified EVM quorum path for terminal assurance." });
     } else {
       checks.push({ id: "evm.finality", status: "warning", message: "Successful EVM execution is observed but has not reached the configured finalized state." });
     }
@@ -73,6 +72,51 @@ export function evmExecutionVerificationReport<C extends EvmChain>(profile: EvmC
     evidence: [
       multichainEvidenceRef("evm-execution", transaction, "viem"),
       ...(settlement ? [multichainEvidenceRef("rollup-settlement", settlement, settlement.adapter)] : []),
+    ],
+  });
+}
+
+/**
+ * Quorum-backed EVM verification. A terminal claim is conditional on the
+ * caller supplying genuine, independently operated provider observations.
+ * A quorum hash alone does not authenticate the RPC operators.
+ */
+export function evmExecutionVerificationReportWithQuorum<C extends EvmChain>(
+  profile: EvmChainProfile,
+  transaction: EvmObservedTransaction<C>,
+  quorum: EvmExecutionQuorum<C>,
+): MultichainVerificationReport {
+  assertEvmExecutionQuorumIntegrity(quorum);
+  const receipt = transaction.receipt;
+  if (
+    profile.chainId !== transaction.intent.chain.id
+    || quorum.profileId !== profile.id
+    || quorum.chainId !== profile.chainId
+    || quorum.transactionHash.toLowerCase() !== receipt.transactionHash.toLowerCase()
+    || quorum.receipt.transactionHash.toLowerCase() !== receipt.transactionHash.toLowerCase()
+    || quorum.receipt.blockNumber !== receipt.blockNumber
+    || quorum.receipt.blockHash.toLowerCase() !== receipt.blockHash.toLowerCase()
+    || quorum.receipt.status !== receipt.status
+  ) {
+    fail("ES4990", "EvmVerificationQuorumMismatch", "EVM execution quorum must match the exact profile, transaction and canonical receipt.");
+  }
+  const success = receipt.status === "success";
+  // L2 finality cannot imply L1 settlement; direct supplied settlement metadata is not trusted here.
+  const finalized = success && profile.finality.kind !== "evm-rollup" && quorum.stage === "finalized" && quorum.requireFinalized;
+  return createMultichainVerificationReport({
+    profile,
+    backend: "public-rpc",
+    subject: `evm:${receipt.transactionHash}`,
+    state: !success ? "NOT_READY" : finalized ? "VERIFIED_FINALITY" : "EXECUTION_OBSERVED",
+    checks: [
+      { id: "evm.quorum", status: success ? "pass" : "fail", message: "EVM multi-provider execution quorum is bound to the requested receipt.", details: { quorumHash: quorum.quorumHash, stage: quorum.stage } },
+      { id: "evm.finality", status: finalized ? "pass" : "warning", message: finalized
+        ? "Every quorum provider observed a canonical successful receipt with finalized head at or above its block."
+        : "EVM quorum finality is not sufficient for the profile's terminal policy; rollups additionally require trusted L1 settlement." },
+    ],
+    evidence: [
+      multichainEvidenceRef("evm-execution", transaction, "viem"),
+      multichainEvidenceRef("evm-execution-quorum", quorum, "multi-rpc"),
     ],
   });
 }
@@ -104,11 +148,11 @@ export function solanaSubmissionVerificationReport(profile: SolanaChainProfile, 
   ];
   if (!status || !status.found) checks.push({ id: "solana.execution", status: "warning", message: "Transaction signature has not yet been observed in RPC history." });
   else if (status.err !== undefined) checks.push({ id: "solana.execution", status: "fail", message: "Observed Solana transaction contains an execution error." });
-  else checks.push({ id: "solana.execution", status: "pass", message: `Solana transaction observed at ${status.confirmationStatus ?? "unknown"} commitment.` });
+  else checks.push({ id: "solana.execution", status: "warning", message: `Direct provider reports Solana transaction at ${status.confirmationStatus ?? "unknown"} commitment; verified finality requires the strict Solana quorum path.` });
 
   const state = !status || !status.found || status.err !== undefined
     ? (!status || !status.found ? "READY_FOR_SUBMISSION" as const : "NOT_READY" as const)
-    : status.confirmationStatus === "finalized" ? "VERIFIED_FINALITY" as const : "EXECUTION_OBSERVED" as const;
+    : "EXECUTION_OBSERVED" as const;
   return createMultichainVerificationReport({
     profile,
     backend: "public-rpc",
@@ -128,13 +172,13 @@ export function jitoBundleVerificationReport(profile: SolanaChainProfile, submit
   ];
   if (!status || !status.found) checks.push({ id: "jito.execution", status: "warning", message: "Jito bundle has not yet been observed through getBundleStatuses." });
   else if (status.err !== undefined) checks.push({ id: "jito.execution", status: "fail", message: "Jito bundle status contains an execution error." });
-  else if (status.confirmationStatus === "finalized") checks.push({ id: "jito.execution", status: "pass", message: "Jito bundle transaction set is observed at finalized Solana commitment." });
+  else if (status.confirmationStatus === "finalized") checks.push({ id: "jito.execution", status: "warning", message: "Direct backend reports finalized commitment, but the complete expected signature set has not been independently finalized through Solana quorum." });
   else checks.push({ id: "jito.execution", status: "warning", message: `Jito bundle is observed at ${status.confirmationStatus ?? "unknown"} commitment but is not finalized.` });
 
   const state = !status || !status.found
     ? "READY_FOR_SUBMISSION" as const
     : status.err !== undefined ? "NOT_READY" as const
-    : status.confirmationStatus === "finalized" ? "VERIFIED_FINALITY" as const : "EXECUTION_OBSERVED" as const;
+    : "EXECUTION_OBSERVED" as const;
   return createMultichainVerificationReport({
     profile,
     backend: "jito-bundle",
@@ -151,8 +195,8 @@ export function suiExecutionVerificationReport(profile: SuiChainProfile, transac
     { id: "sui.simulation", status: "pass", message: "Sui transaction passed checks-enabled simulation before signing/execution." },
     { id: "sui.execution", status: failed ? "fail" : "pass", message: failed ? `Sui execution failed: ${transaction.error}` : "Sui executeTransaction returned a successful Transaction result." },
   ];
-  if (!failed) checks.push({ id: "sui.checkpoint", status: checkpoint ? "pass" : "warning", message: checkpoint ? `Sui transaction is included in checkpoint ${checkpoint.checkpoint}.` : "Successful Sui effects observed; checkpoint inclusion has not yet been recorded." });
-  const state = failed ? "NOT_READY" as const : checkpoint ? "VERIFIED_FINALITY" as const : "EXECUTION_OBSERVED" as const;
+  if (!failed) checks.push({ id: "sui.checkpoint", status: "warning", message: checkpoint ? `Checkpoint ${checkpoint.checkpoint} is reported by a direct caller-supplied source; use the strict Sui quorum path before terminal finality.` : "Successful Sui effects observed; checkpoint inclusion has not yet been recorded." });
+  const state = failed ? "NOT_READY" as const : "EXECUTION_OBSERVED" as const;
   return createMultichainVerificationReport({
     profile,
     backend: "sui-rpc",
