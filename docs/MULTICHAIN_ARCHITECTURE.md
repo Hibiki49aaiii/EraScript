@@ -4,6 +4,8 @@ Status: Draft v0.6 foundation
 
 Checked against current public protocol/SDK documentation on 2026-08-24.
 
+> **Verification trust contract (v0.18 code-audit baseline):** This document's chain architecture is complemented by the [Verification Trust Model](VERIFICATION_TRUST_MODEL.md), which distinguishes report integrity, caller-claimed state, issuer authentication, external evidence provenance, family-specific finality and verified post-state. The formal contract identifies current checks, conditional quorum pathways and outstanding enforcement gaps; it does not assert that all desired security guarantees are already implemented.
+
 ## 1. Goal
 
 EraScript must not equate Web3 with Ethereum or Flashbots.
