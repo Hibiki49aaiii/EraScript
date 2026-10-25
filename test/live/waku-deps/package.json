@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "description": "Locked live-only dependency root for EraScript RAILGUN/Waku smoke tests.",
   "dependencies": {
-    "@railgun-community/waku-broadcaster-client-node": "9.1.1"
+    "@railgun-community/waku-broadcaster-client-node": "10.0.1"
   }
 }
