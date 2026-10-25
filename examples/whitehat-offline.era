@@ -1,0 +1,19 @@
+// Offline audit demonstration. Public dummy addresses; no RPC, signing or broadcast.
+import { Ethereum, address, encodeCall, decodeCall, selectorOf } from "erascript-lang/web3"
+
+const recipient = address("0x0000000000000000000000000000000000000022", Ethereum)
+const abi = [{
+  type: "function", name: "transfer", stateMutability: "nonpayable",
+  inputs: [{ name: "recipient", type: "address" }, { name: "amount", type: "uint256" }],
+  outputs: [{ name: "success", type: "bool" }]
+}] as const
+const data = encodeCall(abi, "transfer", [recipient, 100n])
+const decoded = decodeCall(abi, data)
+if (decoded.functionName !== "transfer" || decoded.args[0] !== recipient || decoded.args[1] !== 100n) {
+  throw new Error("Calldata differs from the expected recipient/amount")
+}
+console.log(JSON.stringify({
+  offline: true, chainId: Ethereum.id, selector: selectorOf(data),
+  recipient: decoded.args[0], rawAmount: String(decoded.args[1]),
+  executionVerified: false, recoveryVerified: false
+}))

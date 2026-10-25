@@ -1,14 +1,26 @@
 # EraScript Verification Trust Model
 
-**Status:** Normative *target assurance contract* and **v0.18 implementation inventory**, not a certification.
+**Status:** Normative *target assurance contract*; v0.18 baseline with **0.19.0-rc.1 changes under #31**, not a certification.
 **Issue:** [#22](https://github.com/Hibiki49aaiii/EraScript/issues/22), parent [#15](https://github.com/Hibiki49aaiii/EraScript/issues/15).
 **Audited base:** `a75e81d5e0e82ee8a0d1f7df946d76a6a1ce0ab7` (`erascript-lang@0.18.0`).
+**Candidate delta:** [#31](https://github.com/Hibiki49aaiii/EraScript/issues/31); current implementation overrides superseded baseline descriptions below. See [release scope](RELEASE.md).
 **Scope:** EVM, EVM rollups, Solana, Jito, Sui, RAILGUN and EVM rescue workflows.
 **Conflict order:** current user requirements → Issue #22 → current code/tests → architecture docs → installed SDK primary docs → assumptions (per `AGENTS.md`).
 
 > **Safety boundary:** A consistent report hash, a claimed `VERIFIED_*` state or a valid Ed25519 report attestation does **not** independently prove that a transaction finalized, the observed RPC data was truthful, or assets reached the intended destination. Only the specific evidence-validation path and its stated trust assumptions can support those claims.
 
 ## 1. Normative terminology, status and trust predicates
+
+### Current candidate delta (supersedes the v0.18 inventory in section 4 and threat-register gap wording)
+
+- Direct EVM (including supplied rollup settlement), Solana, Jito, Sui and RAILGUN adapters now stop at `EXECUTION_OBSERVED` or `NOT_READY`. Their earlier `VERIFIED_FINALITY` table entries describe the v0.18 baseline, not the current direct API. Strict quorum paths remain conditional on trusted observer configuration; rollup settlement is not established by an L2 quorum alone.
+- Token-rescue workflows require positive recovery objectives, disallow duplicate assets/objectives and identical victim/safe addresses, and check standard ERC-20 calldata recipient/amount. Legacy `verifyCompletedRescue` never produces `VERIFIED_RECOVERY`; native depletion alone is rejected and failed/mismatched/tampered readiness reports block observed success. Exact raw signed semantics and independently finalized credit remain #25 gaps.
+- TM-08/NT-07 now have tested post-await clock checks, timeouts, immutable snapshots and bounded process-local request/challenge reservations. Durable authority replay storage and actual custody remain #27 gaps.
+- EIP-712 external signatures are checked against the approved digest/signer, domains must match chain/contract, and unexpected transaction access lists are rejected. Approval values are cloned/frozen across callback awaits.
+- EVM quorum observation rechecks receipt-block canonicality after finalized-head lookup, rejects same-height finalized-hash conflicts and enforces 120-second freshness for finalized promotion/report generation. This does not authenticate operator identities or satisfy every #26 acceptance criterion.
+- TM-09/NT-08 now include file-local symbol/alias/constant tracking. It respects lexical shadows and has an explicit analysis limit. It remains a diagnostic aid, not arbitrary-code confinement.
+
+Current test pointers: `test/signer-boundaries.test.ts`, `test/analyze.test.ts`, `test/evm-execution-quorum.test.ts`, `test/web3-workflow.test.ts`, `test/web3-verification.test.ts`, direct-adapter tests and `test/cli-safety.test.ts`. The baseline negative-case catalog is a requirements list; only actual test results establish coverage.
 
 **MUST** / **MUST NOT** define the desired high-assurance contract for a relying party. This text **does not claim** that every MUST is enforced by v0.18. The status annotations below are authoritative:
 
@@ -105,7 +117,7 @@ The JSON fields `integrity`, `stateRequirementMet`, `authenticated` mean I, C, A
 
 **OPERATIONS:** Trust-root distribution and rotation; compromised-key revocation; consumed-nonce registry; report retention and acceptable age must be supplied externally. Offline Ed25519 verification alone cannot provide those properties. Public keys MUST originate in a trusted out-of-band channel when authentication matters.
 
-## 4. Evidence-to-state assurance matrix (current reality vs desired contract)
+## 4. Historical v0.18 evidence-to-state inventory (apply section 1 candidate delta)
 
 Rows reflect **specific code paths**, not an unconditional property of a chain family. "Direct" means application-provided typed observations may still need externally established provenance; "quorum" means the current code checks a multi-provider consistency policy but cannot by itself guarantee providers are independent operators.
 
@@ -157,13 +169,13 @@ For each critical assertion, an evaluator MUST determine:
 - Prove nonce, hash, receipt, canonicality and finality using the chosen chain-family evidence path; never trust only the caller string `finality: "finalized"`.
 - Account for fees/deflationary tokens, internal contract transfers, rebases, partial recoveries and any other token mechanics explicitly. If a measured delta is incompatible with expected net receipts, report incomplete/unknown rather than success.
 
-**CURRENT/GAP mapping:** `defineRescueWorkflow` defaults `expectedRecoveries` to [], and `rescueFinalStateInvariants` then adds no mandatory safe-delta invariant. `assertActionMatchesTransaction` checks the outer token contract address, not decoded token-recipient calldata. `verifyCompletedRescue` trusts caller-provided `finality`. These are **source-observed assurance gaps**, not empirically exploited findings, and require separate behavioral Issues and negative tests. Existing tests may explicitly configure expectedRecoveries and thus not cover the default gap.
+**Historical v0.18 mapping (superseded):** Missing objectives, outer-only calldata checks and caller-provided finality were source-observed gaps. The candidate now requires positive token objectives, validates standard transfer recipient/amount and refuses terminal recovery from caller finality. Independent finalized post-state and raw signed semantics remain unresolved under #25; see section 1 and current tests.
 
 **Signer authority:** `src/web3/capabilities.ts` enforces policy for code paths using `signSimulatedWithCapability`; separate `node:` imports or third-party SDK paths are not sandboxed. `src/chains/external-signer.ts` binds request ID, payload/context, role/signer, challenge and a claimed `respondedAtMs`. The multichain path presently checks the actual clock before awaiting the signer, then validates a *response-supplied* timestamp; an independent post-await wall-clock expiry check is a proposed future gate. A downstream verifier may be caller supplied; the trustworthiness of that verifier MUST be explicit. No real signature operations are authorized by this document.
 
 ## 7. Threat register: TM-01–TM-14
 
-"Existing" means **current code control present**, not proof the threat is entirely mitigated. "Owner" is the proposed future workstream from parent #15, not an assigned GitHub user.
+This register records the v0.18 findings; section 1 lists controls added by #31. "Existing" refers to the audited baseline, not proof the threat is entirely mitigated. "Owner" is the proposed future workstream from parent #15, not an assigned GitHub user.
 
 | Threat | Adversary / asset / boundary | Existing control and code reference | Residual risk / proposed owner |
 |---|---|---|---|

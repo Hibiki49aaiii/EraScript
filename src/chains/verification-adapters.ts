@@ -1,7 +1,7 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import type { IncludedTx, ConfirmedTx, FinalizedTx } from "../web3/tx.js";
 import type { EvmChain } from "../web3/types.js";
-import { assertEvmExecutionQuorumIntegrity, type EvmExecutionQuorum } from "./evm-execution-quorum.js";
+import { assertEvmExecutionQuorumIntegrity, assertEvmExecutionQuorumFreshness, type EvmExecutionQuorum } from "./evm-execution-quorum.js";
 import type { JitoBundleStatusEvidence, JitoBundleSubmitted } from "./jito.js";
 import type { RollupSettlementEvidence } from "./rollup-finality.js";
 import type { SolanaSignatureStatusEvidence, SolanaSubmittedTransaction } from "./solana-adapter.js";
@@ -87,6 +87,7 @@ export function evmExecutionVerificationReportWithQuorum<C extends EvmChain>(
   quorum: EvmExecutionQuorum<C>,
 ): MultichainVerificationReport {
   assertEvmExecutionQuorumIntegrity(quorum);
+  if (quorum.stage === "finalized") assertEvmExecutionQuorumFreshness(quorum);
   const receipt = transaction.receipt;
   if (
     profile.chainId !== transaction.intent.chain.id

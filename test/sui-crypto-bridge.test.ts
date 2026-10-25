@@ -25,8 +25,6 @@ function request() {
     context: { kind: "sui-transaction-signature-test" },
     nowMs: 1_000,
     ttlMs: 60_000,
-    requestId: "0123456789abcdef",
-    challenge: "ab".repeat(32),
   });
 }
 

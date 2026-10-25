@@ -148,4 +148,13 @@ test("caller-reported finalized state cannot upgrade an observed recovery to VER
   assert.equal(finalized.verifiedRecovery, false);
   assert.ok(finalized.checks.some((entry) => entry.id === "recovery.finality" && entry.status === "warning"));
   assert.ok(finalized.checks.some((entry) => entry.id === "recovery.provenance" && entry.status === "warning"));
+
+  const ready = verifyRescuePlan({ workflow, currentBlock: 100n, atomic: false });
+  const failed = verifyRescuePlan({ workflow, currentBlock: 100n });
+  for (const preBroadcastReport of [failed, { ...ready, chain: { ...Ethereum, id: 10 } }, { ...ready, reportHash: `0x${"00".repeat(32)}` as typeof ready.reportHash }]) {
+    const result = verifyCompletedRescue({ workflow, before, after, finality: "finalized", preBroadcastReport });
+    assert.equal(result.state, "NOT_READY");
+    assert.equal(result.recoveryObserved, false);
+    assert.ok(result.checks.some((entry) => entry.id === "recovery.prerequisites" && entry.status === "fail"));
+  }
 });

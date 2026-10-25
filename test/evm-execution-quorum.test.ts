@@ -3,6 +3,7 @@ import test from "node:test";
 import { EraDiagnosticError } from "../src/diagnostics.js";
 import {
   assertEvmExecutionQuorumIntegrity,
+  assertEvmExecutionQuorumFreshness,
   buildEvmExecutionQuorum,
   defineEvmChainProfile,
   evmExecutionVerificationReportWithQuorum,
@@ -66,9 +67,13 @@ interface ClientOptions {
   canonicalBlockHash?: `0x${string}`;
   confirmations?: bigint;
   finalizedNumber?: bigint;
+  finalizedHash?: `0x${string}`;
+  canonicalNumber?: bigint;
+  canonicalHashOnSecondRead?: `0x${string}`;
 }
 
 function client(options: ClientOptions) {
+  let canonicalReads = 0;
   const receiptBlockHash = options.receiptBlockHash ?? RECEIPT_HASH;
   const canonicalBlockHash =
     options.canonicalBlockHash ?? receiptBlockHash;
@@ -84,15 +89,16 @@ function client(options: ClientOptions) {
       blockNumber?: bigint;
     }) {
       if (input.blockNumber !== undefined) {
+        canonicalReads++;
         return {
-          number: input.blockNumber,
-          hash: canonicalBlockHash,
+          number: options.canonicalNumber ?? input.blockNumber,
+          hash: canonicalReads > 1 ? options.canonicalHashOnSecondRead ?? canonicalBlockHash : canonicalBlockHash,
         };
       }
       if (input.blockTag === "finalized") {
         return {
           number: finalizedNumber,
-          hash: FINALIZED_HASH,
+          hash: options.finalizedHash ?? FINALIZED_HASH,
         };
       }
       if (input.blockTag === "safe") {
@@ -587,4 +593,36 @@ test("promotion rejects tampered quorum evidence", async () => {
       error instanceof EraDiagnosticError
       && error.diagnostic.code === "ES4771",
   );
+});
+
+test("finality rejects wrong block numbers and conflicting hashes at the receipt height", async () => {
+  const { provider, source } = await broadcastSource({ requireFinalized: true });
+  const a = await observeEvmExecutionWithProvider(provider, source, { requireFinalized: true });
+  for (const options of [
+    { canonicalNumber: RECEIPT_BLOCK + 1n },
+    { finalizedNumber: RECEIPT_BLOCK, finalizedHash: OTHER_RECEIPT_HASH },
+    { finalizedHash: OTHER_RECEIPT_HASH },
+  ]) {
+    const bad = await boundProvider("provider-b", options, profile, ["eip1559", "finalizedTag"]);
+    const b = await observeEvmExecutionWithProvider(bad, source, { requireFinalized: true });
+    assert.throws(() => buildEvmExecutionQuorum({ profile, source, observations: [a, b], policy: { requireFinalized: true } }), (e: unknown) => e instanceof EraDiagnosticError && ["ES4765", "ES4768", "ES4908"].includes(e.diagnostic.code));
+  }
+});
+
+test("finalized promotion and reports reject stale evidence even when its hash is valid", async () => {
+  const { provider, source } = await broadcastSource({ requireFinalized: true });
+  const second = await boundProvider("provider-b", {}, profile, ["eip1559", "finalizedTag"]);
+  const observations = await Promise.all([provider, second].map((p) => observeEvmExecutionWithProvider(p, source, { requireFinalized: true, observedAtMs: 1_000 })));
+  const quorum = buildEvmExecutionQuorum({ profile, source, observations, policy: { requireFinalized: true } });
+  assert.doesNotThrow(() => assertEvmExecutionQuorumIntegrity(quorum));
+  assert.doesNotThrow(() => assertEvmExecutionQuorumFreshness(quorum, 2_000));
+  assert.throws(() => assertEvmExecutionQuorumFreshness(quorum, 999), (e: unknown) => e instanceof EraDiagnosticError && e.diagnostic.code === "ES4907");
+  assert.throws(() => promoteEvmExecutionWithQuorum(source, quorum), (e: unknown) => e instanceof EraDiagnosticError && e.diagnostic.code === "ES4907");
+});
+
+test("a receipt reorg during finalized-head lookup invalidates the earlier canonical result", async () => {
+  const { source } = await broadcastSource({ requireFinalized: true });
+  const provider = await boundProvider("reorg-provider", { canonicalHashOnSecondRead: OTHER_RECEIPT_HASH }, profile, ["eip1559", "finalizedTag"]);
+  const observation = await observeEvmExecutionWithProvider(provider, source, { requireFinalized: true });
+  assert.equal(observation.canonicality, "mismatch");
 });

@@ -221,6 +221,16 @@ export function verifyCompletedRescue<C extends EvmChain>(input: {
 }): RescueVerificationReport<C> {
   const checks: VerificationCheck[] = [...(input.preBroadcastReport?.checks ?? [])];
   const unsafeBoundaries = input.preBroadcastReport?.unsafeBoundaries ?? [];
+  const prior = input.preBroadcastReport;
+  if (prior && (prior.kind !== "rescue-verification-report"
+    || prior.chain.id !== input.workflow.chain.id
+    || prior.state !== "READY_FOR_BROADCAST"
+    || !prior.readyForBroadcast || prior.recoveryObserved || prior.verifiedRecovery
+    || prior.reportHash !== verificationReportHash(prior.chain, prior.state, prior.checks, unsafeBoundaries)
+    || checks.some((entry) => entry.status === "fail"))) {
+    checks.push(check("recovery.prerequisites", "fail", "Pre-broadcast report is invalid, belongs to another chain, or did not pass readiness checks."));
+    return report(input.workflow.chain, "NOT_READY", checks, unsafeBoundaries);
+  }
   try {
     const finalState = assertRescueFinalState(input.workflow, input.before, input.after);
     checks.push(check("recovery.final-state", "pass", "Post-execution state satisfies all configured rescue invariants.", { invariants: finalState.results.length, afterBlock: input.after.blockNumber.toString() }));

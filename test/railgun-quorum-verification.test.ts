@@ -109,11 +109,11 @@ async function baseEvidence() {
   const observations = await Promise.all([
     observeEvmExecutionWithProvider(providerA, source, {
       requireFinalized: true,
-      observedAtMs: 3_000,
+      observedAtMs: Date.now(),
     }),
     observeEvmExecutionWithProvider(providerB, source, {
       requireFinalized: true,
-      observedAtMs: 4_000,
+      observedAtMs: Date.now(),
     }),
   ]);
   const quorum = buildEvmExecutionQuorum({

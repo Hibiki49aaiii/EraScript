@@ -1,6 +1,6 @@
 import { EraDiagnosticError } from "../diagnostics.js";
 import { RailgunPrivacyOverlay } from "../chains/profiles.js";
-import { assertEvmExecutionQuorumIntegrity, type EvmExecutionQuorum } from "../chains/evm-execution-quorum.js";
+import { assertEvmExecutionQuorumIntegrity, assertEvmExecutionQuorumFreshness, type EvmExecutionQuorum } from "../chains/evm-execution-quorum.js";
 import type { RollupSettlementEvidence } from "../chains/rollup-finality.js";
 import { createMultichainVerificationReport, multichainEvidenceRef, type MultichainVerificationCheck, type MultichainVerificationReport } from "../chains/verification.js";
 import type { EvmChainProfile } from "../chains/types.js";
@@ -149,6 +149,7 @@ export function railgunVerificationReportWithEvmQuorum<C extends EvmChain>(input
   settlement?: RollupSettlementEvidence;
 }): MultichainVerificationReport {
   assertEvmExecutionQuorumIntegrity(input.baseQuorum);
+  if (input.baseQuorum.stage === "finalized") assertEvmExecutionQuorumFreshness(input.baseQuorum);
 
   const txHash = input.baseExecution.receipt.transactionHash;
   if (

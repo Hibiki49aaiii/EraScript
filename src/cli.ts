@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import process from "node:process";
 import { compile } from "./compiler.js";
@@ -36,7 +36,7 @@ import {
   type VerificationReportAuthentication,
 } from "./verification-attestation.js";
 
-const VERSION = "0.18.0";
+const VERSION = "0.19.0-rc.1";
 const RESCUE_STATES = new Set<RescueVerificationState>([
   "NOT_READY",
   "READY_FOR_BROADCAST",
@@ -90,7 +90,7 @@ AI agents should prefer structured outputs: era check <file.era> --json`);
 }
 
 function requireFile(arg: string | undefined): string {
-  if (!arg) usage(2);
+  if (!arg || arg.startsWith("-")) cliError("An explicit input file is required.");
   return resolve(arg);
 }
 
@@ -105,8 +105,7 @@ function resolveOptionalProjectFile(arg: string | undefined): {
     return { file: requireEraProjectEntry(), consumed: false };
   } catch (error) {
     if (error instanceof EraProjectConfigError) {
-      console.error(error.message);
-      process.exit(2);
+      cliError(error.message);
     }
     throw error;
   }
@@ -117,8 +116,7 @@ function requireProjectOrExit(): EraProject {
     return requireEraProject();
   } catch (error) {
     if (error instanceof EraProjectConfigError) {
-      console.error(error.message);
-      process.exit(2);
+      cliError(error.message);
     }
     throw error;
   }
@@ -126,10 +124,44 @@ function requireProjectOrExit(): EraProject {
 
 function readSource(file: string): string {
   if (extname(file) !== ".era") {
-    console.error(`EraScript: expected a .era file, got ${file}`);
-    process.exit(2);
+    cliError(`Expected a .era input file: ${file}`);
   }
-  return readFileSync(file, "utf8");
+  return readBoundedText(file);
+}
+
+function cliError(message: string): never {
+  throw new EraDiagnosticError({ code: "ES4905", severity: "error", kind: "CliInputError", message });
+}
+
+function readBoundedText(file: string, limit = 10 * 1024 * 1024): string {
+  const fd = openSync(file, "r");
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > limit) cliError("Input must be a regular file within the documented size limit.");
+    const buffer = Buffer.alloc(Math.min(stat.size + 1, limit + 1));
+    let size = 0;
+    while (size < buffer.length) {
+      const count = readSync(fd, buffer, size, buffer.length - size, null);
+      if (count === 0) break;
+      size += count;
+    }
+    if (size > limit || size > stat.size) cliError("Input grew while reading or exceeds the size limit.");
+    return buffer.subarray(0, size).toString("utf8");
+  } finally { closeSync(fd); }
+}
+
+function validateOptions(values: string[], flags: string[], valued: string[] = [], separator = false): void {
+  const seen = new Set<string>();
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]!;
+    if (separator && value === "--") return;
+    if (seen.has(value) || (!flags.includes(value) && !valued.includes(value))) cliError(`Unknown, duplicate or misplaced option: ${value}`);
+    seen.add(value);
+    if (valued.includes(value)) {
+      const next = values[++i];
+      if (!next || next.startsWith("-")) cliError(`${value} requires a value.`);
+    }
+  }
 }
 
 function combinedDiagnostics(checked: CheckResult): EraDiagnostic[] {
@@ -175,6 +207,7 @@ function build(file: string, args: string[]): void {
   const checked = typecheck(source, file);
   ensureChecked(checked);
   const output = parseOutput(args, file);
+  if (output === file || extname(output).toLowerCase() === ".era") cliError("Build output must not overwrite an EraScript source file.");
   const result = compile(source, {
     fileName: file,
     sourceMap: true,
@@ -241,22 +274,42 @@ function run(file: string, args: string[]): never {
 function init(directory: string | undefined): void {
   const root = resolve(directory ?? ".");
   const src = join(root, "src");
+  const config = join(root, "era.json");
+  const entry = join(src, "main.era");
+  for (const target of [config, entry]) {
+    try { lstatSync(target); cliError(`Initialization would overwrite an existing path: ${target}`); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  try {
+    const stat = lstatSync(src);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) cliError("Initialization requires a real src directory, not a link or file.");
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   mkdirSync(src, { recursive: true });
-  writeFileSync(join(root, "era.json"), JSON.stringify({ entry: "src/main.era", outDir: "dist" }, null, 2) + "\n");
-  writeFileSync(join(src, "main.era"), `fn greet(name: string) -> string {\n  return \`Hello, \${name}!\`\n}\n\nconsole.log(greet("EraScript"))\n`);
+  const created: string[] = [];
+  try {
+    for (const [path, contents] of [
+      [config, JSON.stringify({ entry: "src/main.era", outDir: "dist" }, null, 2) + "\n"],
+      [entry, `fn greet(name: string) -> string {\n  return \`Hello, \${name}!\`\n}\n\nconsole.log(greet("EraScript"))\n`],
+    ] as const) {
+      const fd = openSync(path, "wx");
+      created.push(path);
+      try { writeFileSync(fd, contents, "utf8"); } finally { closeSync(fd); }
+    }
+  } catch (error) {
+    for (const path of created) unlinkSync(path);
+    throw error;
+  }
   console.log(`Initialized EraScript project in ${root}`);
 }
 
 function verificationKind(value: unknown): CliVerificationKind {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    console.error("EraScript: verification report must be a JSON object");
-    process.exit(2);
+    cliError("Verification report must be a JSON object.");
   }
   const kind = (value as Record<string, unknown>).kind;
   if (kind === "rescue-verification-report") return "rescue";
   if (kind === "multichain-verification-report") return "multichain";
-  console.error(`EraScript: unsupported verification report kind '${String(kind)}'`);
-  process.exit(2);
+  cliError("Unsupported verification report kind.");
 }
 
 function requiredVerificationState(args: string[], kind: "rescue"): RescueVerificationState;
@@ -267,8 +320,7 @@ function requiredVerificationState(args: string[], kind: CliVerificationKind): R
   const value = args[index + 1];
   const states = kind === "rescue" ? RESCUE_STATES : MULTICHAIN_STATES;
   if (!value || !states.has(value as never)) {
-    console.error(`EraScript: --require for ${kind} reports must be one of ${[...states].join(", ")}`);
-    process.exit(2);
+    cliError(`--require for ${kind} reports must be one of ${[...states].join(", ")}`);
   }
   return value as RescueVerificationState | MultichainVerificationState;
 }
@@ -295,23 +347,20 @@ function verificationOption(args: string[], name: "--attestation" | "--trusted-k
 
 function verifyReport(file: string, args: string[]): never {
   if (extname(file) !== ".json") {
-    console.error(`EraScript: era verify expects a .json verification report, got ${file}`);
-    process.exit(2);
+    cliError("era verify expects a .json verification report.");
   }
   const json = args.includes("--json");
   const integrityOnly = args.includes("--integrity-only");
   const attestationFile = verificationOption(args, "--attestation");
   const trustedKeyFile = verificationOption(args, "--trusted-key");
   if ((attestationFile === undefined) !== (trustedKeyFile === undefined)) {
-    console.error("EraScript: --attestation and --trusted-key must be supplied together");
-    process.exit(2);
+    cliError("--attestation and --trusted-key must be supplied together.");
   }
-  const text = readFileSync(file, "utf8");
+  const text = readBoundedText(file);
   let raw: unknown;
   try { raw = JSON.parse(text) as unknown; }
   catch (error) {
-    console.error(`EraScript: verification report is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(2);
+    cliError("Verification report is not valid JSON.");
   }
   const kind = verificationKind(raw);
   let report: CliVerificationReport;
@@ -330,15 +379,15 @@ function verifyReport(file: string, args: string[]): never {
       report = multichain;
     }
     if (attestationFile && trustedKeyFile) {
-      const attestation = parseVerificationReportAttestationJson(readFileSync(attestationFile, "utf8"));
+      const attestation = parseVerificationReportAttestationJson(readBoundedText(attestationFile, 64 * 1024));
       authentication = verifyVerificationReportAttestation({
         attestation,
         report,
-        trustedPublicKey: readFileSync(trustedKeyFile),
+        trustedPublicKey: readBoundedText(trustedKeyFile, 16 * 1024),
       });
     }
   } catch (error) {
-    if (error instanceof EraDiagnosticError) failEra(error, json, { file, kind });
+    if (error instanceof EraDiagnosticError && error.diagnostic.kind !== "CliInputError") failEra(error, json, { file, kind });
     throw error;
   }
 
@@ -393,10 +442,12 @@ if (command === "-v" || command === "--version") {
   process.exit(0);
 }
 
+try {
 switch (command) {
   case "build": {
     const buildFile = args[1];
     if (buildFile && !buildFile.startsWith("-")) {
+      validateOptions(args.slice(2), [], ["-o"]);
       build(requireFile(buildFile), args.slice(2));
     } else {
       if (buildFile) {
@@ -411,11 +462,13 @@ switch (command) {
   }
   case "run": {
     const input = resolveOptionalProjectFile(args[1]);
+    validateOptions(args.slice(input.consumed ? 2 : 1), [], [], true);
     run(input.file, args.slice(input.consumed ? 2 : 1));
     break;
   }
   case "check": {
     const input = resolveOptionalProjectFile(args[1]);
+    validateOptions(args.slice(input.consumed ? 2 : 1), ["--json"]);
     const file = input.file;
     const json = args.slice(input.consumed ? 2 : 1).includes("--json");
     const checked = typecheck(readSource(file), file);
@@ -431,16 +484,33 @@ switch (command) {
     console.log(`OK ${file}`);
     break;
   }
-  case "verify": verifyReport(requireFile(args[1]), args.slice(2)); break;
+  case "verify": {
+    if (!args[1] || args[1].startsWith("-")) cliError("era verify requires a report file.");
+    validateOptions(args.slice(2), ["--json", "--integrity-only"], ["--require", "--attestation", "--trusted-key"]);
+    if (args.includes("--integrity-only") && args.includes("--require")) cliError("--integrity-only and --require cannot be combined.");
+    verifyReport(requireFile(args[1]), args.slice(2));
+    break;
+  }
   case "transpile": {
+    validateOptions(args.slice(2), []);
     const file = requireFile(args[1]);
     const result = compile(readSource(file), { fileName: file, sourceMap: false });
     if (result.diagnostics.length) failDiagnostics(result.diagnostics.map(typescriptDiagnosticToEra));
     process.stdout.write(result.typescript);
     break;
   }
-  case "init": init(args[1]); break;
+  case "init":
+    if (args[1]?.startsWith("-")) cliError("era init expects a directory.");
+    validateOptions(args.slice(2), []);
+    init(args[1]); break;
   default:
-    console.error(`EraScript: unknown command '${command}'`);
-    usage(2);
+    cliError(`Unknown command: ${command}`);
+}
+} catch (error) {
+  const diagnostic: EraDiagnostic = error instanceof EraDiagnosticError ? error.diagnostic : {
+    code: "ES4906", severity: "error", kind: "CliOperationFailed", message: "EraScript could not complete the operation; check input paths and permissions.",
+  };
+  if (args.includes("--json")) console.log(diagnosticsJson([diagnostic]));
+  else console.error(formatEraDiagnostic(diagnostic));
+  process.exit(2);
 }

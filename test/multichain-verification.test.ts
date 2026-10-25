@@ -51,7 +51,7 @@ test("multichain external signer response is bound to request payload, context, 
     },
   };
   await assert.rejects(
-    () => signWithMultichainExternalSigner({ signer: tampered, request, verifier: () => true, verifierName: "mock-ed25519", nowMs: 2_000 }),
+    () => signWithMultichainExternalSigner({ signer: tampered, request: { ...request, requestId: "abcdef1234567891", challenge: "cd".repeat(32) }, verifier: () => true, verifierName: "mock-ed25519", nowMs: 2_000 }),
     (error: unknown) => error instanceof EraDiagnosticError && error.diagnostic.code === "ES4536",
   );
 });

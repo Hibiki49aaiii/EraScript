@@ -6,6 +6,8 @@ EraScript does not replace Node.js. It compiles to ordinary JavaScript, keeps np
 
 > **AI writes intent. EraScript verifies execution.**
 
+**Current candidate: 0.19.0-rc.1 (unreleased).** Start with the [white-hat local workflow](docs/WHITEHAT_GUIDE.md), [security policy](SECURITY.md) and [release scope/blockers](docs/RELEASE.md). Authorized offline inspection and trusted local execution are the qualification scope; real-key custody and complete recovery assurance still require #25/#26/#27. Historical release notes below describe their original snapshots, not current production approval.
+
 > **Verification trust boundary:** Report hash integrity, a claimed verification state, and a valid report attestation are separate from independently established chain finality or confirmed asset recovery. See the [Verification Trust Model](docs/VERIFICATION_TRUST_MODEL.md) for current guarantees, conditional paths and documented gaps.
 
 ## Why EraScript
@@ -312,7 +314,7 @@ User intent
 ## CLI
 
 ```bash
-npm install
+npm ci --ignore-scripts
 npm run build
 
 era build                    # uses era.json entry/outDir

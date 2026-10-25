@@ -351,7 +351,7 @@ export async function observeEvmExecutionWithProvider<
         const canonical = await getBlock({
           blockNumber: receipt.blockNumber,
         });
-        if (canonical.hash) {
+        if (canonical.hash && canonical.number === receipt.blockNumber) {
           canonicalBlockHash = blockHash(canonical.hash, chain);
           canonicality =
             canonicalBlockHash.toLowerCase()
@@ -381,15 +381,20 @@ export async function observeEvmExecutionWithProvider<
     if (options.requireFinalized && getBlock) {
       try {
         const finalized = await getBlock({ blockTag: "finalized" });
-        if (finalized.number !== null && finalized.hash) {
+        if (typeof finalized.number === "bigint" && finalized.number >= 0n && finalized.hash) {
           finalizedHead = {
             blockNumber: finalized.number,
             blockHash: blockHash(finalized.hash, chain),
           };
           finality =
             finalized.number >= receipt.blockNumber
+              && (finalized.number !== receipt.blockNumber || finalized.hash.toLowerCase() === receipt.blockHash.toLowerCase())
               ? "finalized"
               : "not-finalized";
+          // Recheck canonical identity after reading the finalized head. A reorg
+          // during these awaited calls must not reuse the earlier canonical flag.
+          const current = await getBlock({ blockNumber: receipt.blockNumber });
+          if (current.number !== receipt.blockNumber || current.hash?.toLowerCase() !== receipt.blockHash.toLowerCase()) canonicality = "mismatch";
         }
       } catch {
         finality = "unavailable";
@@ -536,6 +541,21 @@ export function assertEvmExecutionQuorumIntegrity<
   }
 }
 
+/** Freshness is an operational bound, separate from report hash integrity. */
+export function assertEvmExecutionQuorumFreshness(
+  quorum: EvmExecutionQuorum,
+  nowMs = Date.now(),
+  maximumAgeMs = 120_000,
+): void {
+  safeInteger(nowMs, "nowMs", 0);
+  safeInteger(maximumAgeMs, "maximumAgeMs", 1);
+  for (const observation of quorum.observations) {
+    if (!Number.isSafeInteger(observation.observedAtMs) || observation.observedAtMs > nowMs || nowMs - observation.observedAtMs > maximumAgeMs) {
+      fail("ES4907", "StaleEvmQuorumEvidence", "EVM quorum observations are stale or future-dated; obtain fresh provider observations.");
+    }
+  }
+}
+
 export function buildEvmExecutionQuorum<
   C extends EvmChain,
 >(input: {
@@ -646,6 +666,7 @@ export function buildEvmExecutionQuorum<
   }
 
   const firstReceipt = observations[0]!.receipt!;
+  const finalizedHeads = new Map<bigint, string>();
   const consensusKey = receiptConsensusKey(firstReceipt);
   for (const observation of observations) {
     if (receiptConsensusKey(observation.receipt!) !== consensusKey) {
@@ -729,6 +750,10 @@ export function buildEvmExecutionQuorum<
           },
         );
       }
+      const head = observation.finalizedHead!;
+      const existingHash = finalizedHeads.get(head.blockNumber);
+      if (existingHash && existingHash !== head.blockHash.toLowerCase()) fail("ES4908", "ConflictingEvmFinalizedHeads", "EVM providers disagree on finalized block identity at the same height.");
+      finalizedHeads.set(head.blockNumber, head.blockHash.toLowerCase());
     }
   }
 
@@ -792,6 +817,7 @@ export function promoteEvmExecutionWithQuorum<
   quorum: EvmExecutionQuorum<C>,
 ): EvmQuorumPromotedExecution<C> {
   assertEvmExecutionQuorumIntegrity(quorum);
+  if (quorum.stage === "finalized") assertEvmExecutionQuorumFreshness(quorum);
   if (
     quorum.profileId !== source.provider.profileId
     || quorum.chainId !== source.provider.chainId
