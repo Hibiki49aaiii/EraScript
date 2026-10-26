@@ -67,7 +67,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
-    "@mysten/sui": "2.27.1",
+    "@mysten/sui": "2.37.0",
     "@solana/kit": "8.1.0",
     "@railgun-community/wallet": "10.9.0"
   }
