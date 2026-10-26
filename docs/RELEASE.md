@@ -9,7 +9,7 @@ Candidate: **0.19.0-rc.1**, tracked by [Issue #31](https://github.com/Hibiki49aa
 | Source check / trusted local build and execution | Strict TS, bounded diagnostic alias resolution, file preservation; Windows/Linux Node22/24 matrix | Arbitrary Node code has host authority; no malicious-code sandbox |
 | Offline ABI inspection | Installed-package example verifies selector/recipient/amount with no network/key | Does not prove on-chain effects |
 | Report verification | Integrity, state requirement and optional Ed25519 issuer authentication remain separate | Issuer trust, revocation and truth of original evidence are operator responsibilities |
-| External signing | Frozen approval snapshots; EVM raw field/sender parity; EIP-712 cryptographic signer check; multichain TTL/replay checks | Durable authority isolation and semantic limits under #27 |
+| External signing | Existing helpers plus opt-in dual-backend authority for exact EVM native/ERC20 grants, HTTPS identity and persistent nonce consumption | Device/vendor driver, actual host isolation, trusted observer and operational qualification under #27 |
 | EVM quorum | Canonical receipt block, finalized head consistency, second canonical lookup and freshness at promotion | Observer independence/authentication and chain-specific settlement under #26 |
 | Asset rescue | Failed prerequisites cannot become observed success; direct finality cannot mint VERIFIED_RECOVERY | Raw bytes, exact credit, authenticated finalized post-state positive path under #25 |
 
@@ -33,7 +33,7 @@ The lifecycle publish guard rejects missing approval, dirty checkouts and code c
 
 1. Complete #25: real serialized transaction sender/chain/nonce/fees/calldata, exact recovery objective and safe-wallet credit, independently sourced finalized before/after state; positive and adversarial tests for supported token semantics.
 2. Complete #26: provenance and independently configured observers for each advertised terminal path, stale/reorg/rollback contradictions, L1 settlement where relevant. No caller-constructed status or hash may substitute for these predicates.
-3. Complete #27: choose and implement custody outside the arbitrary script process (separate authority host or hardware approval workflow), durable replay/idempotency, explicit semantic limits, least-privilege credentials, audit/revocation/recovery and hostile-runtime tests. A CLI flag or in-process object is insufficient.
+3. Complete #27: both external service and hardware custody were selected on 2026-10-26. The opt-in [signing authority](SIGNING_AUTHORITY.md) implements bounded EVM transfer policy, persistent grant/nonce consumption and dual routing. Actual separate-host/device deployment, SDK/firmware qualification, least-privilege credentials, trusted simulation, store crash recovery, audit/revocation operations and independent review remain. A CLI flag or in-process object is insufficient.
 4. Disposition remaining development/live SDK advisories with pinned upstream fixes or reviewed isolated replacements; do not force-install breaking downgrades to make audit counts look better. Root dev debt is excluded from the package but remains relevant to development/live runners.
 5. Independent security review and operator acceptance of the actual deployment, exact-candidate read-only integration results, protected branch/release permissions and release-owner signoff. No customer keys or fund movement are implied by preparation.
 

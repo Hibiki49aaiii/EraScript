@@ -81,7 +81,7 @@ try {
   const packagePaths = normalizedPackagePaths(packResult);
   const packagePathSet = new Set(packagePaths);
   const requiredPaths = [
-    "SECURITY.md", "CHANGELOG.md", "docs/WHITEHAT_GUIDE.md", "docs/RELEASE.md", "docs/VERIFICATION_TRUST_MODEL.md", "examples/whitehat-offline.era",
+    "SECURITY.md", "CHANGELOG.md", "docs/WHITEHAT_GUIDE.md", "docs/RELEASE.md", "docs/VERIFICATION_TRUST_MODEL.md", "docs/SIGNING_AUTHORITY.md", "examples/whitehat-offline.era",
     "dist/src/index.js",
     "dist/src/index.d.ts",
     "dist/src/cli.js",
@@ -89,6 +89,9 @@ try {
     "dist/src/web3/index.js",
     "dist/src/chains/index.js",
     "dist/src/privacy/index.js",
+    "dist/src/signing/index.js",
+    "dist/src/signing/index.d.ts",
+    "examples/signing-authority-offline.mjs",
   ];
   for (const requiredPath of requiredPaths) {
     assert.ok(
@@ -141,6 +144,10 @@ try {
     "runtime-loader.js",
   );
   assert.ok(existsSync(installedCli), "installed package is missing CLI entry");
+  const authorityExample = run(process.execPath, [join(installedRoot, "examples", "signing-authority-offline.mjs")], { cwd: fixture });
+  const authorityRows = authorityExample.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.deepEqual(authorityRows.map((row) => row.backend), ["external-service", "hardware-wallet"]);
+  assert.ok(authorityRows.every((row) => row.fixtureSignatureVerified && row.replayRejected && !row.realDeviceUsed && !row.executionVerified && !row.recoveryVerified));
   assert.ok(
     existsSync(installedRuntimeLoader),
     "installed package is missing runtime loader",
@@ -156,6 +163,7 @@ try {
         'await import("erascript-lang/web3");',
         'await import("erascript-lang/chains");',
         'await import("erascript-lang/privacy");',
+        'await import("erascript-lang/signing");',
         'console.log("imports-ok");',
       ].join(" "),
     ],
@@ -229,7 +237,7 @@ try {
         fileCount: packagePaths.length,
         runtimeIncluded: true,
         testsExcluded: true,
-        imports: [".", "./web3", "./chains", "./privacy"],
+        imports: [".", "./web3", "./chains", "./privacy", "./signing"],
         cli: ["--version", "check", "check --json", "run", "build", "verify --integrity-only", "verify --require (denial)"],
         offlineCalldataExample: true,
       },
