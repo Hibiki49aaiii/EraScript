@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -227,4 +227,20 @@ test("trusted grant revocation persists across restart and prevents signing afte
   await ready; await authority.revokeGrant(next.id); release(true);
   await assert.rejects(pending, hasKind("Denied"));
   assert.equal(calls, 0);
+});
+
+test("replay directory accepts Windows short names but rejects linked path components", async (t) => {
+  const f = await fixture(t);
+  if (process.platform === "win32") {
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:ERA_REPLAY_TEST_DIR).ShortPath"], { encoding: "utf8", windowsHide: true, timeout: 15_000, env: { ...process.env, ERA_REPLAY_TEST_DIR: f.directory } });
+    assert.equal(result.status, 0);
+    const short = result.stdout.trim(); assert.ok(short.length > 0);
+    await (await openFileSigningReplayStore(short)).consume(["short-name-reservation"]);
+    await assert.rejects((await openFileSigningReplayStore(f.directory)).consume(["short-name-reservation"]), hasKind("Consumed"));
+  }
+  const actual = join(f.directory, "actual"); const linked = join(f.directory, "linked");
+  await mkdir(actual); await mkdir(join(actual, "nested"));
+  await symlink(actual, linked, process.platform === "win32" ? "junction" : "dir");
+  await assert.rejects(openFileSigningReplayStore(linked), hasKind("Unavailable"));
+  await assert.rejects(openFileSigningReplayStore(join(linked, "nested")), hasKind("Unavailable"));
 });

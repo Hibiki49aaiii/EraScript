@@ -27,14 +27,20 @@ No new runtime dependency or framework. Provider/device integration is kept on t
 Windows, Node24.13.1:
 
 - `npm run check` — passed.
-- `npm run test:core` — final run 274/274, zero failures/skips.
-- Focused authority/HTTPS/existing signer tests — 30/30.
+- `npm run test:core` — initial local implementation 274/274, zero failures/skips. See portability correction below and the final exact-head CI in Issue #27.
+- Focused authority/HTTPS/existing signer tests — 31/31 after the portability correction.
 - `node --test scripts/test/*.test.mjs` — 2/2.
 - `npm run test:package` — passed; 302 files, five entrypoint imports, both offline authority routes and replay denial executed outside checkout. The first run's informational import list still printed four entries; the actual fifth import was tested, and the printed summary was corrected.
 - `npm audit --omit=dev --json` — zero production advisories. Development/live advisories are separate and not waived by this result.
 - `git diff --check` — passed. No configured linter/formatter.
 
 Exact commit, final PR CI runs and candidate evidence are recorded in the Issue #27 completion update. No real wallet, production keys, transaction broadcast, deployment or npm publication occurred.
+
+## CI portability correction
+
+Initial PR CI 40285749694 passed Linux Node22/24 but failed both Windows jobs at replay-store initialization. Windows 8.3 aliases are not links: a reproduced local short path such as `ERASCR~2` resolved to its longer directory name while `lstat().isSymbolicLink()` was false. Comparing path strings to `realpath` incorrectly rejected this valid directory representation.
+
+The corrected store inspects each ancestor using `lstat`, rejects symbolic links/junctions, and then pins the canonical real path. Added a Windows short-name claim/replay regression plus root/ancestor link refusal on both platforms. No link guard was removed. Typecheck/build and focused31/31 passed locally; final matrix result belongs to the exact follow-up commit.
 
 ## Remaining work
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, open, realpath } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { signingError } from "./policy.js";
 
 export interface SigningReplayStore {
@@ -10,12 +10,16 @@ export interface SigningReplayStore {
 
 /** Trusted-host local filesystem only. Never delete/reset claims to retry a signature. */
 export async function openFileSigningReplayStore(directory: string): Promise<SigningReplayStore> {
-  const root = resolve(directory);
+  let root = resolve(directory);
   try {
-    const info = await lstat(root);
-    const canonical = await realpath(root);
-    const samePath = process.platform === "win32" ? canonical.toLowerCase() === root.toLowerCase() : canonical === root;
-    if (!info.isDirectory() || info.isSymbolicLink() || !samePath) throw signingError("Unavailable");
+    // Text equality with realpath rejects valid Windows 8.3 aliases (for example
+    // RUNNER~1). Inspect every path component for links, then pin its canonical path.
+    for (let current = root; ; current = dirname(current)) {
+      const info = await lstat(current);
+      if (!info.isDirectory() || info.isSymbolicLink()) throw signingError("Unavailable");
+      if (dirname(current) === current) break;
+    }
+    root = await realpath(root);
   } catch { throw signingError("Unavailable"); }
   return Object.freeze({
     async consume(keys: readonly string[]): Promise<void> {
