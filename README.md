@@ -234,6 +234,8 @@ EVM generated code can reference a key without exposing the raw secret, and sign
 
 The EVM external signer path additionally parses the returned raw transaction, recovers its signer cryptographically, and compares chainId/type/nonce/gas/to/value/data/fees/EIP-7702 authorization list against the approved request before accepting it.
 
+The opt-in `erascript-lang/signing` API adds a trusted-host authority with explicit external-service and hardware-wallet bridge backends. Exact EVM native/ERC20 transfer grants, persistent grant/nonce consumption, trusted simulation callbacks and pinned HTTPS are shared across both routes. See [Signing Authority](docs/SIGNING_AUTHORITY.md) for the offline installed example, integration and remaining real-device/host qualification. Ordinary Node execution is not sandboxed, and a hardware bridge contract is not proof of physical-device approval.
+
 v0.6 also adds a family-aware external signing envelope containing:
 
 - chain family/profile/network

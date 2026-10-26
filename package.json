@@ -25,6 +25,10 @@
     "./privacy": {
       "types": "./dist/src/privacy/index.d.ts",
       "import": "./dist/src/privacy/index.js"
+    },
+    "./signing": {
+      "types": "./dist/src/signing/index.d.ts",
+      "import": "./dist/src/signing/index.js"
     }
   },
   "bin": {
@@ -40,7 +44,9 @@
     "docs/WHITEHAT_GUIDE.md",
     "docs/RELEASE.md",
     "docs/VERIFICATION_TRUST_MODEL.md",
-    "examples/whitehat-offline.era"
+    "docs/SIGNING_AUTHORITY.md",
+    "examples/whitehat-offline.era",
+    "examples/signing-authority-offline.mjs"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

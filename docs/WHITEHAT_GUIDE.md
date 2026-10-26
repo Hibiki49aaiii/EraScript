@@ -62,4 +62,6 @@ npx --no-install era verify report.json --attestation report.attestation.json --
 
 ## 5. 調査記録と終了
 
+署名の両方式と鍵不要のサンプルは [SIGNING_AUTHORITY.md](SIGNING_AUTHORITY.md) を参照してください。共通ゲートの検証と、実機・運用ホストの隔離検証は別の条件です。
+
 使用コミット・候補SHA256・Nodeバージョン・コマンド・終了コード・信頼鍵ID・採用した公開証拠を残します。秘密鍵、環境変数の実値、顧客データをレポートやGitへ保存しないでください。再現は最小の合成fixtureで行い、脆弱性は [SECURITY.md](../SECURITY.md) の経路で連絡します。残る実運用条件は [RELEASE.md](RELEASE.md) で管理します。
